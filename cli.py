@@ -40,18 +40,32 @@ def describe_ips(cluster):
     }
 
 
-def create(cluster, cfg):
+def create(cluster, cfg, tags=None, verbose=False):
     if not cluster_exists(cluster):
-        cluster.launch(ebs_optimized=cfg.ebs_optimized_instance, max_timeout_secs=cfg.cluster_create_timeout_secs)
+        cluster.launch(az=cfg.az,
+                       vpc_id=cfg.vpc_id,
+                       subnet_id=cfg.subnet_id,
+                       ami_id=cfg.ami_id,
+                       ebs_snapshot_id=cfg.ebs_snapshot_id,
+                       volume_size_gb=cfg.ebs_gbs,
+                       volume_type=cfg.ebs_type,
+                       key_name=cfg.key_pair_name,
+                       security_group_ids=cfg.sg_list,
+                       iam_ec2_role_name=cfg.iam_role,
+                       instance_type=cfg.instance_type,
+                       use_placement_group=cfg.use_placement_group,
+                       iops=cfg.ebs_iops,
+                       ebs_optimized=cfg.ebs_optimized_instance,
+                       max_timeout_secs=cfg.cluster_create_timeout_secs,
+                       tags=tags,
+                       verbose=verbose)
     cluster.wait_for_all_nodes_to_be_status_ok()
 
 
-def terminate(cluster):
+def terminate(cluster, verbose=False):
     if not cluster.any_node_is_running_or_pending():
         return
-
-    cluster.terminate()
-    cluster.wait_for_all_nodes_to_be_terminated()
+    cluster.terminate(verbose=verbose)
 
 
 def ssh_cmd(cluster, cfg, in_vpc=False):
@@ -156,8 +170,11 @@ if __name__ == "__main__":
 
     args, leftovers = parser.parse_known_args()
 
+    if args.action == "test":
+        args.verbose = True
+
     def vlog(s):
-        if args.verbose or args.action == "test":
+        if args.verbose:
             print(f'[cli.py] {s}')
 
     cluster_configs = {}
@@ -205,20 +222,7 @@ if __name__ == "__main__":
     # Define the EC2NodeCluster. This creates the cluster python object, but doesn't take any action in terms of AWS
     cluster = EC2NodeCluster(node_count=cfg.node_count,
                              cluster_name=cluster_name,
-                             region=cfg.region,
-                             az=cfg.az,
-                             vpc_id=cfg.vpc_id,
-                             subnet_id=cfg.subnet_id,
-                             ami_id=cfg.ami_id,
-                             ebs_snapshot_id=cfg.ebs_snapshot_id,
-                             iops=cfg.ebs_iops,
-                             volume_size_gb=cfg.ebs_gbs,
-                             volume_type=cfg.ebs_type,
-                             key_name=cfg.key_pair_name,
-                             security_group_ids=cfg.sg_list,
-                             iam_ec2_role_name=cfg.iam_role,
-                             instance_type=cfg.instance_type,
-                             as_placement_group=cfg.use_placement_group)
+                             region=cfg.region)
 
     vlog(f'Action = {args.action}')
 
