@@ -1,0 +1,11 @@
+.idea/
+_gitignored/
+venv/
+
+*__pycache__*
+.DS_Store
+
+
+# Generated files
+docs/_build
+docs/apidocs/

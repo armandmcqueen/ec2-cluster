@@ -1,0 +1,40 @@
+# Define the base params
+
+
+# Naming
+cluster_template_name: "ec2-cluster-test"
+cluster_id: 1
+
+# Launch Location
+region: "us-west-2"
+az: "us-west-2c"
+
+vpc_id : "vpc-09fe736b3807bbecf"
+subnet_id: "subnet-016dd4822d0e200b1"
+
+
+# AMI
+ami_id: "ami-0b294f219d14e6a82"
+ebs_snapshot_id: "snap-013f2dc8c2ecc97d9"
+username: "ubuntu"
+
+# EBS
+ebs_type: "io1"
+ebs_iops: 2500
+ebs_gbs: 500
+
+# Launch Settings
+instance_type: "t2.micro"
+node_count: 2
+
+iam_role: "ec2-cluster-test-role"
+key_pair_name: "ec2-cluster-test"
+sg_list:
+  - "sg-08f2dd4548d863796" # armand-ssh
+
+
+
+# EC2Cluster behavior args
+cluster_create_timeout_secs: 600 # Fail after 10 minutes without an increase in the cluster size
+use_placement_group: No
+ebs_optimized_instance: No

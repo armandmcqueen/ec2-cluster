@@ -1,0 +1,8 @@
+fabric2
+boto3
+pyyaml
+
+sphinx
+sphinx-rtd-theme
+
+beautifulsoup4
