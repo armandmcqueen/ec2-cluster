@@ -13,59 +13,108 @@ class EC2NodeCluster:
                  node_count,
                  cluster_name,
                  region,
-                 always_verbose=False):
+                 az,
+                 vpc_id,
+                 subnet_id,
+                 ami_id,
+                 ebs_snapshot_id,
+                 iops,
+                 volume_size_gb,
+                 volume_type,
+                 key_name,
+                 security_group_ids,
+                 iam_ec2_role_name,
+                 instance_type,
+                 as_placement_group=False,
+                 eia_type=None):
 
-        self._always_verbose=always_verbose
-
-        self.node_count = node_count
-        self.region = region
-        self.cluster_name = cluster_name
-        self.node_names = [f'{self.cluster_name}-node{i}' for i in range(node_count)]
-        self.cluster_sg_name = f'{self.cluster_name}-intracluster-ssh'
-        self.cluster_placement_group_name = f'{self.cluster_name}-placement-group'  # Defined, but might not be used
-
-        self.nodes = [EC2Node(node_name, self.region)
-                      for node_name in self.node_names]
 
         self.session = boto3.session.Session(region_name=region)
         self.ec2_client = self.session.client("ec2")
         self.ec2_resource = self.session.resource("ec2")
 
+        self.node_count = node_count
+        self.cluster_name = cluster_name
+
+        self.region = region
+        self.az = az
+        self.vpc_id = vpc_id
+        self.subnet_id = subnet_id
+        self.ami_id = ami_id
+        self.ebs_snapshot_id = ebs_snapshot_id
+        self.iops = iops
+        self.volume_size_gb = volume_size_gb
+        self.volume_type = volume_type
+        self.key_name = key_name
+        self.security_group_ids = security_group_ids
+        self.iam_ec2_role_name = iam_ec2_role_name
+        self.instance_type = instance_type
+
+        self.use_placement_group = as_placement_group
+        self.cluster_placement_group_name = f'{self.cluster_name}-placement-group'
+        pg_name_param = self.cluster_placement_group_name if self.use_placement_group else None
+
+        self.eia_type = eia_type
+
+        self.node_names = [f'{self.cluster_name}-node{i}' for i in range(node_count)]
+        self.nodes = [EC2Node(node_name,
+                              self.region,
+                              self.az,
+                              self.vpc_id,
+                              self.subnet_id,
+                              self.ami_id,
+                              self.ebs_snapshot_id,
+                              self.iops,
+                              self.volume_size_gb,
+                              self.volume_type,
+                              self.key_name,
+                              [sg_id for sg_id in self.security_group_ids],
+                              self.iam_ec2_role_name,
+                              self.instance_type,
+                              placement_group_name=pg_name_param,
+                              eia_type=self.eia_type)
+                      for node_name in self.node_names]
+
+        self.cluster_sg_name = f'{self.cluster_name}-intracluster-ssh'
+
+
         self._cluster_sg_id = None
+        self._instance_ids = None
+        self._private_ips = None
+        self._public_ips = None
 
 
-    def _get_vlog(self, force_verbose=False):
-        def vlog_fn_verbose(s):
-            print(s)
-
-        def vlog_fn_noop(s):
-            pass
-
-        vlog_fn = vlog_fn_verbose if self._always_verbose or force_verbose else vlog_fn_noop
-        return vlog_fn
 
     def instance_ids(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
-        return [node.instance_id for node in self.nodes]
-
+        if self._instance_ids is None:
+            self.load_instance_infos()
+        return self._instance_ids
 
 
     def private_ips(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
-        return [node.private_ip for node in self.nodes]
+        if self._private_ips is None:
+            self.load_instance_infos()
+        return self._private_ips
 
 
     def public_ips(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
-        return [node.public_ip for node in self.nodes]
+        if self._public_ips is None:
+            self.load_instance_infos()
+        return self._public_ips
 
 
+    def load_instance_infos(self):
+        self._instance_ids = [node.instance_id() for node in self.nodes]
+        self._private_ips = [node.private_ip() for node in self.nodes]
+        self._public_ips = [node.public_ip() for node in self.nodes]
 
 
-    @property
     def cluster_sg_id(self):
         if self._cluster_sg_id is None:
             if not self.security_group_exists(self.cluster_sg_name):
@@ -73,8 +122,7 @@ class EC2NodeCluster:
             self._cluster_sg_id = self.get_security_group_id_from_name(self.cluster_sg_name)
         return self._cluster_sg_id
 
-
-    def create_cluster_sg(self, vpc_id):
+    def create_cluster_sg(self, dry_run=False):
         if self.security_group_exists(self.cluster_sg_name):
             print("Cluster SG already exists. No need to recreate")
             return
@@ -82,20 +130,20 @@ class EC2NodeCluster:
         response = self.ec2_client.create_security_group(
             Description=self.cluster_sg_name,
             GroupName=self.cluster_sg_name,
-            VpcId=vpc_id,
+            VpcId=self.vpc_id,
+            DryRun=dry_run
         )
         self._cluster_sg_id = response['GroupId']
 
         while not self.security_group_exists(self.cluster_sg_name):
             time.sleep(1)
 
-        sg = self.ec2_resource.SecurityGroup(self.cluster_sg_id)
+        sg = self.ec2_resource.SecurityGroup(self.cluster_sg_id())
         sg.authorize_ingress(SourceSecurityGroupName=self.cluster_sg_name)
-
 
     def delete_cluster_sg(self, dry_run=False):
         response = self.ec2_client.delete_security_group(
-            GroupId=self.cluster_sg_id,
+            GroupId=self.cluster_sg_id(),
             GroupName=self.cluster_sg_name,
             DryRun=dry_run
         )
@@ -179,62 +227,27 @@ class EC2NodeCluster:
     # max_timeout_secs is on a per-node basis: successfully launching a node resets the timeout timer.
     # max_timeout_secs=None to retry forever
     # wait_secs is how long we wait between attempts to launch ec2 node.
-    def launch(self,
-               az,
-               vpc_id,
-               subnet_id,
-               ami_id,
-               ebs_snapshot_id,
-               volume_size_gb,
-               volume_type,
-               key_name,
-               security_group_ids,
-               iam_ec2_role_name,
-               instance_type,
-               use_placement_group=False,
-               iops=None,
-               eia_type=None,
-               ebs_optimized=True,
-               tags=None,
-               dry_run=False,
-               max_timeout_secs=None,
-               wait_secs=10,
-               verbose=True):
+    def launch(self, ebs_optimized=True, tags=None, dry_run=False, max_timeout_secs=None, wait_secs=10, verbose=True):
 
-        vlog = self._get_vlog(verbose)
+        def vlog(s):
+            if verbose:
+                print(s)
 
         if self.any_node_is_running_or_pending():
             raise RuntimeError("Nodes with names matching this cluster already exist!")
 
-        self.create_cluster_sg(vpc_id)
+        self.create_cluster_sg()
 
-        if use_placement_group:
+        if self.use_placement_group:
             self.create_placement_group_if_doesnt_exist()
 
         for launch_ind, ec2_node in enumerate(self.nodes):
+            ec2_node.add_sg(self.cluster_sg_id())
             start = time.time()
             while True:
-                vlog("-----")
+                print("-----")
                 try:
-
-                    ec2_node.launch(az,
-                                    vpc_id,
-                                    subnet_id,
-                                    ami_id,
-                                    ebs_snapshot_id,
-                                    volume_size_gb,
-                                    volume_type,
-                                    key_name,
-                                    security_group_ids,
-                                    iam_ec2_role_name,
-                                    instance_type,
-                                    placement_group_name=self.cluster_placement_group_name if use_placement_group else None,
-                                    iops=iops,
-                                    eia_type=eia_type,
-                                    ebs_optimized=ebs_optimized,
-                                    tags=tags,
-                                    dry_run=dry_run)
-
+                    ec2_node.launch(ebs_optimized=ebs_optimized, tags=tags, dry_run=dry_run)
                     vlog(f'Node {launch_ind+1} of {self.node_count} successfully launched')
                     break
                 except Exception as e:
@@ -271,25 +284,21 @@ class EC2NodeCluster:
                             vlog(f'Will time out after {max_timeout_secs} seconds. Current elapsed time: {humanize_float(time.time() - start)} seconds')
                         time.sleep(wait_secs)
 
-        vlog("-----")
+        print("-----")
         vlog("Now waiting for all nodes to reach RUNNING state")
         self.wait_for_all_nodes_to_be_running()
-        vlog("All nodes are running!")
 
-
-    def terminate(self, verbose=False):
-        vlog = self._get_vlog(verbose)
-
+    def terminate(self):
         for i, ec2_node in enumerate(self.nodes):
-            vlog("-----")
+            print("-----")
             ec2_node.detach_security_group(self.cluster_sg_id())
             ec2_node.terminate()
-            vlog(f'Node {i + 1} of {self.node_count} successfully triggered deletion')
+            print(f'Node {i + 1} of {self.node_count} successfully triggered deletion')
         self.delete_cluster_sg()
-        vlog("Cluster SG deleted")
-        vlog("-----")
-        vlog("Waiting for all nodes to reach terminated state")
+
+        print("-----")
+        print("Waiting for all nodes to reach terminated state")
         self.wait_for_all_nodes_to_be_terminated()
-        if self.check_placement_group_exists():
+        if self.use_placement_group:
+            print("Deleting placement group")
             self.delete_placement_group()
-            vlog("Placement group deleted!")
