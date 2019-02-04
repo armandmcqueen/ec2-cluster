@@ -142,7 +142,7 @@ class EC2Node:
     def wait_for_instance_to_be_status_ok(self, dry_run=False):
         waiter = self.ec2_client.get_waiter('instance_status_ok')
         waiter.wait(
-            InstanceIds=[self.instance_id()],
+            InstanceIds=[self.instance_id],
             DryRun=dry_run
         )
 
@@ -153,7 +153,7 @@ class EC2Node:
                 {
                     'Name': 'instance-id',
                     'Values': [
-                        self.instance_id(),
+                        self.instance_id,
                     ]
                 }
             ],
@@ -246,7 +246,9 @@ class EC2Node:
             eia_param_list = [{'Type': eia_type}]
 
         # Tags
-        all_tags = [{'Key': 'Name', 'Value': self.name}] + tags
+        all_tags = [{'Key': 'Name', 'Value': self.name}]
+        if tags:
+            all_tags += tags
 
         # EBS
         ebs_params = {
@@ -305,7 +307,7 @@ class EC2Node:
         return response
 
     def terminate(self, dry_run=False):
-        instance_id = self.instance_id()
+        instance_id = self.instance_id
         response = self.ec2_client.terminate_instances(
             InstanceIds=[
                 instance_id,

@@ -15,7 +15,7 @@ class EC2NodeCluster:
                  region,
                  always_verbose=False):
 
-        self._always_verbose=always_verbose
+        self._always_verbose = always_verbose
 
         self.node_count = node_count
         self.region = region
@@ -34,9 +34,11 @@ class EC2NodeCluster:
         self._cluster_sg_id = None
 
 
-    def _get_vlog(self, force_verbose=False):
+    def _get_vlog(self, force_verbose=False, prefix=None):
         def vlog_fn_verbose(s):
-            print(s)
+            out = "" if prefix is None else f'[{prefix}] '
+            out += s
+            print(out)
 
         def vlog_fn_noop(s):
             pass
@@ -44,26 +46,24 @@ class EC2NodeCluster:
         vlog_fn = vlog_fn_verbose if self._always_verbose or force_verbose else vlog_fn_noop
         return vlog_fn
 
+    @property
     def instance_ids(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
         return [node.instance_id for node in self.nodes]
 
 
-
+    @property
     def private_ips(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
         return [node.private_ip for node in self.nodes]
 
-
+    @property
     def public_ips(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
         return [node.public_ip for node in self.nodes]
-
-
-
 
     @property
     def cluster_sg_id(self):
@@ -134,18 +134,18 @@ class EC2NodeCluster:
         # {'GroupName': 'string', 'State': 'pending'|'available'|'deleting'|'deleted', 'Strategy': 'cluster'|'spread'}
         return response["PlacementGroups"]
 
-    def check_placement_group_exists(self):
+    def placement_group_exists(self):
         return self.cluster_placement_group_name in [pg["GroupName"] for pg in self.list_placement_groups()]
 
     def create_placement_group_if_doesnt_exist(self):
-        if not self.check_placement_group_exists():
+        if not self.placement_group_exists():
             response = self.ec2_client.create_placement_group(
                 GroupName=self.cluster_placement_group_name,
                 Strategy='cluster'
             )
 
     def delete_placement_group(self):
-        if self.check_placement_group_exists():
+        if self.placement_group_exists():
             response = self.ec2_client.delete_placement_group(
                 GroupName=self.cluster_placement_group_name
             )
@@ -170,7 +170,10 @@ class EC2NodeCluster:
         for ec2_node in self.nodes:
             try:
                 ec2_node.wait_for_instance_to_be_terminated()
-            except:
+            except Exception as ex:
+                print("[wait_for_all_nodes_to_be_terminated] Some error while waiting for nodes to be terminated")
+                print(f'[wait_for_all_nodes_to_be_terminated] {ex}')
+                print("[wait_for_all_nodes_to_be_terminated] Assuming non-fatal error. Continuing")
                 pass
 
 
@@ -201,14 +204,16 @@ class EC2NodeCluster:
                wait_secs=10,
                verbose=True):
 
-        vlog = self._get_vlog(verbose)
+        vlog = self._get_vlog(verbose, 'EC2NodeCluster.launch')
 
         if self.any_node_is_running_or_pending():
             raise RuntimeError("Nodes with names matching this cluster already exist!")
 
+        vlog("Creating cluster SG if needed")
         self.create_cluster_sg(vpc_id)
 
         if use_placement_group:
+            vlog("Creating placement group")
             self.create_placement_group_if_doesnt_exist()
 
         for launch_ind, ec2_node in enumerate(self.nodes):
@@ -249,7 +254,7 @@ class EC2NodeCluster:
                                 if terminate_ind >= launch_ind:
                                     break   # Don't try to shut down nodes that weren't launched.
                                 vlog(f'Terminating node #{terminate_ind+1} of {self.node_count}')
-                                ec2_node_to_delete.detach_security_group(self.cluster_sg_id())
+                                ec2_node_to_delete.detach_security_group(self.cluster_sg_id)
                                 ec2_node_to_delete.terminate()
                                 vlog(f'Node #{terminate_ind+1} successfully terminated')
                             except:
@@ -278,11 +283,11 @@ class EC2NodeCluster:
 
 
     def terminate(self, verbose=False):
-        vlog = self._get_vlog(verbose)
+        vlog = self._get_vlog(verbose, 'EC2NodeCluster.terminate')
 
         for i, ec2_node in enumerate(self.nodes):
             vlog("-----")
-            ec2_node.detach_security_group(self.cluster_sg_id())
+            ec2_node.detach_security_group(self.cluster_sg_id)
             ec2_node.terminate()
             vlog(f'Node {i + 1} of {self.node_count} successfully triggered deletion')
         self.delete_cluster_sg()
@@ -290,6 +295,6 @@ class EC2NodeCluster:
         vlog("-----")
         vlog("Waiting for all nodes to reach terminated state")
         self.wait_for_all_nodes_to_be_terminated()
-        if self.check_placement_group_exists():
+        if self.placement_group_exists():
             self.delete_placement_group()
             vlog("Placement group deleted!")
