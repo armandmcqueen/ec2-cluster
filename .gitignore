@@ -6,6 +6,12 @@ venv/
 .DS_Store
 
 
-# Generated files
+# Generated Sphinx files
 docs/_build
 docs/apidocs/
+
+# Generate files for PyPi
+build/
+dist/
+ec2_cluster.egg-info/
+

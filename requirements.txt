@@ -2,6 +2,7 @@ fabric2
 boto3
 pyyaml
 
+setuptools
 sphinx
 sphinx-rtd-theme
 

@@ -33,10 +33,10 @@ def describe_ips(cluster):
         raise RuntimeError("Cluster does not exist. Cannot describe runtime attributes of cluster that does not exist")
 
     return {
-        "master_public_ip": cluster.public_ips()[0],
-        "worker_public_ips": cluster.public_ips()[1:],
-        "master_private_ip": cluster.private_ips()[0],
-        "worker_private_ips": cluster.private_ips()[1:]
+        "master_public_ip": cluster.public_ips[0],
+        "worker_public_ips": cluster.public_ips[1:],
+        "master_private_ip": cluster.private_ips[0],
+        "worker_private_ips": cluster.private_ips[1:]
     }
 
 
@@ -232,15 +232,15 @@ if __name__ == "__main__":
     elif args.action == "create":
         if cluster_exists(cluster):
             if args.clean_create:
-                terminate(cluster)
+                terminate(cluster, verbose=args.verbose)
             else:
                 raise RuntimeError("Trying to create a cluster that already exists. Did you want to use the "
                                    "--clean_create flag?")
-        create(cluster, cfg)
+        create(cluster, cfg, verbose=args.verbose)
 
     elif args.action == "terminate":
         if cluster_exists(cluster):
-            terminate(cluster)
+            terminate(cluster, verbose=args.verbose)
         else:
             raise RuntimeError("Cannot terminate. The cluster does not exist.")
 
