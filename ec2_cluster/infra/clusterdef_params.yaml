@@ -96,5 +96,10 @@ params:
       num_nodes*cluster_create_timeout_secs
 
 
+  - param_name: additional_tags
+    param_type: list
+    param_desc: >
+      Additional tags to attach to the instances. Should be list of dicts in format
+      [{'Key': key1, 'Value': val1}, {'Key': key2, 'Value': val2}]. Key=Name is reserved.
 
 

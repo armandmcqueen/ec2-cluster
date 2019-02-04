@@ -139,8 +139,7 @@ if __name__ == '__main__':
         if not cluster.any_node_is_running_or_pending():
             raise RuntimeError("Cannot print SSH command. The cluster does not exist")
         else:
-            ips = cluster.describe_ips()
-            ssh_ip = ips["master_public_ip"] if not args.ssh_to_private_ip else ips["master_private_ip"]
+            ssh_ip = cluster.ips["master_public_ip"] if not args.ssh_to_private_ip else cluster.ips["master_private_ip"]
             print(f'ssh -A {cluster.config.username}:{ssh_ip}')
 
 

@@ -61,7 +61,7 @@ class ConfigCluster:
 
     def validate_config_dict(self, config_dict):
         # Some params are optional. Handle them separately later
-        maybe_nonexistant_params = ["ebs_iops", 'ebs_optimized_instance']
+        maybe_nonexistant_params = ["ebs_iops", 'ebs_optimized_instance', 'additional_tags']
 
         for p in self.paramdef_list:
             param_name = p["param_name"]
@@ -80,6 +80,10 @@ class ConfigCluster:
         # ebs_optimized_instances special case. Defaults to True
         if "ebs_optimized_instance" not in config_dict.keys() or config_dict["ebs_optimized_instance"] is None:
             config_dict["ebs_optimized_instance"] = True
+
+        # additional_tags special case. Defaults to None as expected by EC2NodeCluster
+        if "additional_tags" not in config_dict.keys() or config_dict["additional_tags"] is None:
+            config_dict["additional_tags"] = None
 
 
     @property
@@ -112,7 +116,7 @@ class ConfigCluster:
     def wait_for_all_nodes_to_be_terminated(self):
         return self.cluster.wait_for_all_nodes_to_be_terminated()
 
-    def launch(self, tags=None, verbose=False, timeout_secs=None):
+    def launch(self, verbose=False):
         self.cluster.launch(az=self.config.az,
                             vpc_id=self.config.vpc_id,
                             subnet_id=self.config.subnet_id,
@@ -127,15 +131,15 @@ class ConfigCluster:
                             use_placement_group=self.config.use_placement_group,
                             ebs_iops=self.config.ebs_iops,
                             ebs_optimized_instance=self.config.ebs_optimized_instance,
-                            tags=tags,
-                            timeout_secs=timeout_secs,
+                            tags=self.config.additional_tags,
+                            timeout_secs=self.config.cluster_create_timeout_secs,
                             verbose=verbose)
 
 
     def terminate(self, verbose=False):
         self.cluster.terminate(verbose=verbose)
 
-    def describe_ips(self):
+    def ips(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("Cluster does not exist. Cannot list ips of cluster that does not exist")
 

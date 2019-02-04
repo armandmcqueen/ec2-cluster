@@ -65,6 +65,19 @@ class EC2NodeCluster:
             raise RuntimeError("No nodes are running for this cluster!")
         return [node.public_ip for node in self.nodes]
 
+
+    @property
+    def ips(self):
+        if not self.any_node_is_running_or_pending():
+            raise RuntimeError("Cluster does not exist. Cannot list ips of cluster that does not exist")
+
+        return {
+            "master_public_ip": self.public_ips[0],
+            "worker_public_ips": self.public_ips[1:],
+            "master_private_ip": self.private_ips[0],
+            "worker_private_ips": self.private_ips[1:]
+        }
+
     @property
     def cluster_sg_id(self):
         if self._cluster_sg_id is None:
