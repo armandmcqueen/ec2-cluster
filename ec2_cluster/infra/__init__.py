@@ -1,20 +1,19 @@
 from pkgutil import iter_modules
 import os
 
-# Workaround to make PyCharm happy
-# https://github.com/celery/kombu/blob/7d13f9b95d0b50c94393b962e6def928511bfda6/kombu/__init__.py#L34-L36
-STATICA_HACK = True
-globals()['kcah_acitats'[::-1].upper()] = False
-if STATICA_HACK:
-    from .EC2Node import EC2Node
-    from .EC2NodeCluster import EC2NodeCluster
+
+from .EC2Node import EC2Node
+from .EC2NodeCluster import EC2NodeCluster
+from .ConfigCluster import ConfigCluster
+
 
 
 
 
 
 __SPHINX_STRICT__ = ["EC2Node",
-                     "EC2NodeCluster"]
+                     "EC2NodeCluster",
+                     "ConfigCluster"]
 __all__ = []
 
 # Namespace improvement from Tensorpack.
@@ -26,9 +25,12 @@ def _global_import(name, strict_sphinx=True):
     if lst:
         del globals()[name]
         for k in lst:
+            # print(k)
             if not k.startswith('__') and k not in __all__:
                 if strict_sphinx and k not in __SPHINX_STRICT__:
+                    # print(f'Skipped due to strict sphinx - {k}')
                     continue
+                # print(f'Added - {k}: {p.__dict__[k]}')
                 globals()[k] = p.__dict__[k]
                 __all__.append(k)
 
@@ -36,6 +38,7 @@ def _global_import(name, strict_sphinx=True):
 _CURR_DIR = os.path.dirname(__file__)
 for _, module_name, _ in iter_modules(
        [_CURR_DIR]):
+    # print(f'MODULE - {module_name}')
     srcpath = os.path.join(_CURR_DIR, module_name + '.py')
     if not os.path.isfile(srcpath):
         continue

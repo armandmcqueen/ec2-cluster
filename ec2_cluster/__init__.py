@@ -1,1 +1,2 @@
-name = "ec2_cluster"
+name = "ec2-cluster"
+

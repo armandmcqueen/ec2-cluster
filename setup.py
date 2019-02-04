@@ -16,4 +16,5 @@ setuptools.setup(
     classifiers=[
         "Programming Language :: Python :: 3.6"
     ],
+    scripts=['cli/ec2-cluster-ctl']
 )

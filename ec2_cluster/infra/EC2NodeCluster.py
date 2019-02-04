@@ -20,7 +20,7 @@ class EC2NodeCluster:
         self.node_count = node_count
         self.region = region
         self.cluster_name = cluster_name
-        self.node_names = [f'{self.cluster_name}-node{i}' for i in range(node_count)]
+        self.node_names = [f'{self.cluster_name}-node_{i}' for i in range(node_count)]
         self.cluster_sg_name = f'{self.cluster_name}-intracluster-ssh'
         self.cluster_placement_group_name = f'{self.cluster_name}-placement-group'  # Defined, but might not be used
 
@@ -188,19 +188,19 @@ class EC2NodeCluster:
                subnet_id,
                ami_id,
                ebs_snapshot_id,
-               volume_size_gb,
-               volume_type,
-               key_name,
-               security_group_ids,
-               iam_ec2_role_name,
+               ebs_gbs,
+               ebs_type,
+               key_pair_name,
+               sg_list,
+               iam_role,
                instance_type,
                use_placement_group=False,
-               iops=None,
+               ebs_iops=None,
                eia_type=None,
-               ebs_optimized=True,
+               ebs_optimized_instance=True,
                tags=None,
                dry_run=False,
-               max_timeout_secs=None,
+               timeout_secs=None,
                wait_secs=10,
                verbose=True):
 
@@ -227,16 +227,16 @@ class EC2NodeCluster:
                                     subnet_id,
                                     ami_id,
                                     ebs_snapshot_id,
-                                    volume_size_gb,
-                                    volume_type,
-                                    key_name,
-                                    security_group_ids,
-                                    iam_ec2_role_name,
+                                    ebs_gbs,
+                                    ebs_type,
+                                    key_pair_name,
+                                    sg_list,
+                                    iam_role,
                                     instance_type,
                                     placement_group_name=self.cluster_placement_group_name if use_placement_group else None,
-                                    iops=iops,
+                                    iops=ebs_iops,
                                     eia_type=eia_type,
-                                    ebs_optimized=ebs_optimized,
+                                    ebs_optimized=ebs_optimized_instance,
                                     tags=tags,
                                     dry_run=dry_run)
 
@@ -245,8 +245,8 @@ class EC2NodeCluster:
                 except Exception as e:
                     vlog(f'Error launching node: {str(e)}')
 
-                    if max_timeout_secs is not None and (time.time() - start) > max_timeout_secs:
-                        vlog(f'Timed out trying to launch node #{launch_ind+1}. Max timeout of {max_timeout_secs} seconds reached')
+                    if timeout_secs is not None and (time.time() - start) > timeout_secs:
+                        vlog(f'Timed out trying to launch node #{launch_ind+1}. Max timeout of {timeout_secs} seconds reached')
                         vlog("Now trying to clean up partially launched cluster")
                         for terminate_ind, ec2_node_to_delete in enumerate(self.nodes):
                             vlog("-----")
@@ -270,10 +270,10 @@ class EC2NodeCluster:
                     else:
 
                         vlog(f'Retrying launch of node #{launch_ind+1} in {wait_secs} seconds.')
-                        if max_timeout_secs is None:
+                        if timeout_secs is None:
                             vlog(f'There is no timeout. Elapsed time trying to launch this node: {humanize_float(time.time() - start)} seconds')
                         else:
-                            vlog(f'Will time out after {max_timeout_secs} seconds. Current elapsed time: {humanize_float(time.time() - start)} seconds')
+                            vlog(f'Will time out after {timeout_secs} seconds. Current elapsed time: {humanize_float(time.time() - start)} seconds')
                         time.sleep(wait_secs)
 
         vlog("-----")
@@ -285,16 +285,22 @@ class EC2NodeCluster:
     def terminate(self, verbose=False):
         vlog = self._get_vlog(verbose, 'EC2NodeCluster.terminate')
 
-        for i, ec2_node in enumerate(self.nodes):
+        if not self.any_node_is_running_or_pending():
+            vlog("No nodes exist to terminate")
+        else:
+            for i, ec2_node in enumerate(self.nodes):
+                vlog("-----")
+                ec2_node.detach_security_group(self.cluster_sg_id)
+                ec2_node.terminate()
+                vlog(f'Node {i + 1} of {self.node_count} successfully triggered deletion')
             vlog("-----")
-            ec2_node.detach_security_group(self.cluster_sg_id)
-            ec2_node.terminate()
-            vlog(f'Node {i + 1} of {self.node_count} successfully triggered deletion')
-        self.delete_cluster_sg()
-        vlog("Cluster SG deleted")
-        vlog("-----")
-        vlog("Waiting for all nodes to reach terminated state")
-        self.wait_for_all_nodes_to_be_terminated()
+            vlog("Waiting for all nodes to reach terminated state")
+            self.wait_for_all_nodes_to_be_terminated()
+
+        if self.security_group_exists(self.cluster_sg_id):
+            self.delete_cluster_sg()
+            vlog("Cluster SG deleted")
+
         if self.placement_group_exists():
             self.delete_placement_group()
             vlog("Placement group deleted!")

@@ -8,7 +8,6 @@ except ImportError:
 
 from ec2_cluster.infra import EC2NodeCluster
 
-
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)
@@ -47,17 +46,17 @@ def create(cluster, cfg, tags=None, verbose=False):
                        subnet_id=cfg.subnet_id,
                        ami_id=cfg.ami_id,
                        ebs_snapshot_id=cfg.ebs_snapshot_id,
-                       volume_size_gb=cfg.ebs_gbs,
-                       volume_type=cfg.ebs_type,
-                       key_name=cfg.key_pair_name,
-                       security_group_ids=cfg.sg_list,
-                       iam_ec2_role_name=cfg.iam_role,
+                       ebs_gbs=cfg.ebs_gbs,
+                       ebs_type=cfg.ebs_type,
+                       key_pair_name=cfg.key_pair_name,
+                       sg_list=cfg.sg_list,
+                       iam_role=cfg.iam_role,
                        instance_type=cfg.instance_type,
                        use_placement_group=cfg.use_placement_group,
-                       iops=cfg.ebs_iops,
-                       ebs_optimized=cfg.ebs_optimized_instance,
-                       max_timeout_secs=cfg.cluster_create_timeout_secs,
+                       ebs_iops=cfg.ebs_iops,
+                       ebs_optimized_instance=cfg.ebs_optimized_instance,
                        tags=tags,
+                       timeout_secs=cfg.cluster_create_timeout_secs,
                        verbose=verbose)
     cluster.wait_for_all_nodes_to_be_status_ok()
 
@@ -128,7 +127,7 @@ if __name__ == "__main__":
     # Load the list of params used to launch a cluster from clusterdef_params.yaml. Can be set by a config.yaml file
     # or through command line args. If set in both config.yaml and cli args, the cli arg value with be used
 
-    param_list_yaml_abspath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "cli/clusterdef_params.yaml")
+    param_list_yaml_abspath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clusterdef_params.yaml")
     with open(param_list_yaml_abspath, 'r') as f:
         cluster_param_list = yaml.load(f)["params"]
 
@@ -198,9 +197,7 @@ if __name__ == "__main__":
         if args_as_dict[param_name] is not None:
             cluster_configs[param_name] = args_as_dict[param_name]
 
-    # Fill in some defaults. Hardcoded because there are so few
-    if "sg_list" not in cluster_configs.keys():
-        cluster_configs["sg_list"] = []
+
 
     if "ebs_optimized_instance" not in cluster_configs.keys():
         cluster_configs["ebs_optimized_instance"] = True

@@ -1,0 +1,147 @@
+#!/usr/bin/env python3.6
+
+
+
+import argparse
+import os
+import yaml
+
+from ec2_cluster.infra import ConfigCluster
+
+
+# Translate `param_type` string in clusterdef_params to Python type for argparse arguments
+def parse_type(type_as_str):
+    if type_as_str == "str":
+        return str
+    elif type_as_str == "int":
+        return int
+    elif type_as_str == "float":
+        return float
+    elif type_as_str == "bool":
+        return bool
+    elif type_as_str == "list":
+        return list
+    else:
+        raise RuntimeError(f'Unrecognized type string: {type_as_str}')
+
+
+if __name__ == '__main__':
+    path_to_containing_dir = os.path.dirname(os.path.realpath(__file__))
+    param_list_yaml_abspath = os.path.join(path_to_containing_dir, "../ec2_cluster/infra/clusterdef_params.yaml")
+    with open(param_list_yaml_abspath, 'r') as f:
+        cluster_param_list = yaml.load(f)["params"]
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+            "action",
+            help="Action to take. Create cluster, delete cluster, describe cluster ips, "
+                 "output ssh cmd string",
+            choices=["create", "terminate", "describe", "ssh_cmd", "test"])
+
+    parser.add_argument(
+            "--verbose",
+            action="store_true")
+
+    parser.add_argument(
+            "--config",
+            help="Path to yaml file with default cluster def params. Defaults can be overwritten by "
+                 "additional command line arguments")
+
+    parser.add_argument(
+            "--ssh_to_private_ip",
+            help="Add this flag if you want the ssh_cmd to use the private IP instead of the public IP.",
+            action="store_true")
+
+    parser.add_argument(
+            "--clean_create",
+            help="Rebuild cluster cleanly? By default, will reuse cluster if one with the correct name "
+                 "already exists. Does not detect mismatches between existing cluster and desired cluster",
+            action="store_true")
+
+    # Add all the ClusterDef params as CLI arguments
+    for param in cluster_param_list:
+        parser.add_argument(
+                f'--{param["param_name"]}',
+                help=f'Cluster definition param. {param["param_desc"]}',
+                type=parse_type(param["param_type"]))
+
+
+    args, leftovers = parser.parse_known_args()
+
+    if args.action == "test":
+        args.verbose = True
+
+    def vlog(s):
+        if args.verbose:
+            print(f'[cli_v2.py] {s}')
+
+
+    # Extract any ClusterDef params from CLI arguments the user passed in
+    args_as_dict = vars(args)
+    cli_args = {param["param_name"]: args_as_dict[param["param_name"]]
+                for param in cluster_param_list
+                if args_as_dict[param["param_name"]] is not None}
+
+    vlog(f'Command line args: {args}')
+    vlog(f'ClusterDef args found in CLI args: {cli_args}')
+
+    if args.config is None:
+        config_yaml_abspath = None
+    else:
+        config_yaml_abspath = args.config if args.config.startswith("/") else os.path.join(os.getcwd(), args.config)
+
+    vlog(f'Pulling yaml from: {config_yaml_abspath}')
+    cluster = ConfigCluster(config_yaml_abspath, other_args=cli_args)
+    vlog(f'Final config: {cluster.config}')
+
+
+
+
+    vlog(f'Action = {args.action}')
+
+    if args.action == "test":
+        pass
+
+    elif args.action == "create":
+        if cluster.any_node_is_running_or_pending():
+            if not args.clean_create:
+                raise RuntimeError("Trying to create a cluster that already exists. Did you want to use the "
+                                   "--clean_create flag?")
+            else:
+                vlog("clean_create: terminating existing instances")
+                cluster.terminate(verbose=args.verbose)
+                vlog("cleaned.")
+
+        vlog("Launching cluster")
+        cluster.launch(verbose=args.verbose)
+        vlog("Cluster launched")
+
+
+    elif args.action == "terminate":
+        if cluster.any_node_is_running_or_pending():
+            vlog("Starting terminate")
+            cluster.terminate(verbose=args.verbose)
+            vlog("Termination complete")
+        else:
+            raise RuntimeError("Cannot terminate. The cluster does not exist.")
+
+    elif args.action == "describe":
+        vlog("describe output:")
+        if not cluster.any_node_is_running_or_pending():
+            print("Cluster does not exist")
+        else:
+            print(cluster.describe_ips())
+
+
+
+    elif args.action == "ssh_cmd":
+        if not cluster.any_node_is_running_or_pending():
+            raise RuntimeError("Cannot print SSH command. The cluster does not exist")
+        else:
+            ips = cluster.describe_ips()
+            ssh_ip = ips["master_public_ip"] if not args.ssh_to_private_ip else ips["master_private_ip"]
+            print(f'ssh -A {cluster.config.username}:{ssh_ip}')
+
+
+
