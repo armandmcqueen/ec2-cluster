@@ -23,6 +23,16 @@ ec2-cluster-ctl create \
     --verbose
 
 
+
+
+
+ec2-cluster-ctl create \
+    --config configs/test.yaml \
+    --cluster_template_name large-cluster-test \
+    --verbose
+
+
+
 ec2-cluster-ctl create \
     --clean_create \
     --config configs/test.yaml \

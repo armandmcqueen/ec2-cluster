@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="ec2_cluster",
-    version="0.0.0a2",
+    version="0.0.0a3",
     author="Armand McQueen",
     author_email="armandmcqueen@gmail.com",
     description="A tool for launching and running commands on a cluster of EC2 instances",

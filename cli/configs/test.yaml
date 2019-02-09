@@ -24,7 +24,7 @@ ebs_iops: 2500
 ebs_gbs: 500
 
 # Launch Settings
-instance_type: "t2.micro"
+instance_type: "t3.nano"
 node_count: 2
 
 iam_role: "ec2-cluster-test-role"

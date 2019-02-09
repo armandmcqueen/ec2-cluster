@@ -14,7 +14,7 @@ MAX_CONNS_PER_GROUP = 10
 class ClusterShell:
 
 
-    def __init__(self, username, master_ip, worker_ips, ssh_key_path, use_bastion=True):
+    def __init__(self, username, master_ip, worker_ips, ssh_key_path, use_bastion=False):
         self._username = username
         self._master_ip = master_ip
         self._worker_ips = worker_ips
