@@ -19,8 +19,7 @@ ebs_snapshot_id: "snap-013f2dc8c2ecc97d9"
 username: "ubuntu"
 
 # EBS
-ebs_type: "io1"
-ebs_iops: 2500
+ebs_type: "gp2"
 ebs_gbs: 500
 
 # Launch Settings
