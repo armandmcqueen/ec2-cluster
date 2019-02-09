@@ -5,6 +5,9 @@ import subprocess
 import time
 from fabric2 import Connection, ThreadingGroup
 
+# NOTE 1: Not certain I actually need this, but was a proposed fix for 'error reading SSH banner' and I haven't seen
+#         that error since. https://github.com/paramiko/paramiko/issues/673#issuecomment-436815430
+
 def humanize_float(num):
     return "{0:,.2f}".format(num)
 
@@ -15,13 +18,19 @@ class ClusterShell:
 
 
     def __init__(self, username, master_ip, worker_ips, ssh_key_path, use_bastion=False):
+        if not isinstance(worker_ips, list):
+            worker_ips = [worker_ips]
+
         self._username = username
         self._master_ip = master_ip
         self._worker_ips = worker_ips
         self._all_ips = [self._master_ip] + self._worker_ips
         self.use_bastion = use_bastion
 
-        connect_kwargs = {"key_filename": os.path.expanduser(ssh_key_path)}
+        connect_kwargs = {
+            "key_filename": os.path.expanduser(ssh_key_path),
+            "banner_timeout": 30    # NOTE 1 above
+        }
 
         self._master_conn = Connection(user=self._username,
                                        host=self._master_ip,
