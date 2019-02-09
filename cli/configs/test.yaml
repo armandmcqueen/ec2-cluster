@@ -20,7 +20,7 @@ username: "ubuntu"
 
 # EBS
 ebs_type: "gp2"
-ebs_gbs: 500
+ebs_gbs: 100
 
 # Launch Settings
 instance_type: "t3.nano"
