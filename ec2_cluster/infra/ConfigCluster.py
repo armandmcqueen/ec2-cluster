@@ -48,7 +48,7 @@ class ConfigCluster:
         template_name = self.config.cluster_template_name
         node_count = self.config.node_count
         cluster_id = self.config.cluster_id
-        self.cluster_name = f'{template_name}-{node_count}_node-cluster_{cluster_id}'
+        self.cluster_name = f'{template_name}-{node_count}node-cluster{cluster_id}'
         self.cluster = EC2NodeCluster(node_count=node_count,
                                       cluster_name=self.cluster_name,
                                       region=self.config.region)
@@ -139,6 +139,7 @@ class ConfigCluster:
     def terminate(self, verbose=False):
         self.cluster.terminate(verbose=verbose)
 
+    @property
     def ips(self):
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("Cluster does not exist. Cannot list ips of cluster that does not exist")

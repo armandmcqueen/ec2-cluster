@@ -131,7 +131,7 @@ if __name__ == '__main__':
         if not cluster.any_node_is_running_or_pending():
             print("Cluster does not exist")
         else:
-            print(cluster.describe_ips())
+            print(cluster.ips)
 
 
 

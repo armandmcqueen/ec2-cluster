@@ -20,7 +20,7 @@ class EC2NodeCluster:
         self.node_count = node_count
         self.region = region
         self.cluster_name = cluster_name
-        self.node_names = [f'{self.cluster_name}-node_{i}' for i in range(node_count)]
+        self.node_names = [f'{self.cluster_name}-node{i}' for i in range(node_count)]
         self.cluster_sg_name = f'{self.cluster_name}-intracluster-ssh'
         self.cluster_placement_group_name = f'{self.cluster_name}-placement-group'  # Defined, but might not be used
 
