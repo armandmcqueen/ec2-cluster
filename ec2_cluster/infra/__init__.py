@@ -29,13 +29,13 @@ def _global_import(name, strict_sphinx=True):
             # print(k)
             if not k.startswith('__') and k not in __all__:
                 if strict_sphinx and k not in __SPHINX_STRICT__:
-                    print(f'Skipped due to strict sphinx - {k}')
+                    # print(f'Skipped due to strict sphinx - {k}')
                     continue
                 if strict_sphinx and str(type(p.__dict__[k])) == "<class 'module'>":
-                    print(f'Skipped as is module, not class: {k}')
+                    # print(f'Skipped as is module, not class: {k}')
                     continue
-                print(f'Added - {k}: {p.__dict__[k]}')
-                print(str(type(p.__dict__[k])))
+                # print(f'Added - {k}: {p.__dict__[k]}')
+                # print(str(type(p.__dict__[k])))
                 globals()[k] = p.__dict__[k]
                 __all__.append(k)
 
