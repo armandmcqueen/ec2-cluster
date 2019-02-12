@@ -56,10 +56,10 @@ if __name__ == '__main__':
 
 
     rel_path = "./apidocs/ec2_cluster.control.rst"
-    add_autosummary(rel_path, ["ec2_cluster.control.RemoteShell", "ec2_cluster.control.ClusterShell"])
+    add_autosummary(rel_path, ["ec2_cluster.control.ClusterShell"])
 
     rel_path = "./apidocs/ec2_cluster.infra.rst"
-    add_autosummary(rel_path, ["ec2_cluster.infra.EC2Node", "ec2_cluster.infra.EC2NodeCluster"])
+    add_autosummary(rel_path, ["ec2_cluster.infra.EC2Node", "ec2_cluster.infra.EC2NodeCluster", "ec2_cluster.infra.ConfigCluster"])
 
     rel_path = "./apidocs/ec2_cluster.orch.rst"
     add_autosummary(rel_path, ["ec2_cluster.orch.add_to_known_hosts_cmd",

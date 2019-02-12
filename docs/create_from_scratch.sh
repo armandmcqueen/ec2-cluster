@@ -10,8 +10,8 @@ rm -rf apidocs
 sphinx-apidoc -o apidocs ../ec2_cluster \
     ../ec2_cluster/infra/EC2Node.py \
     ../ec2_cluster/infra/EC2NodeCluster.py \
+    ../ec2_cluster/infra/ConfigCluster.py \
     ../ec2_cluster/control/ClusterShell.py \
-    ../ec2_cluster/control/RemoteShell.py \
     ../ec2_cluster/orch/PasswordlessSSH.py \
     --separate
 

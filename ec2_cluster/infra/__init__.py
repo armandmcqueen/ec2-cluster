@@ -3,8 +3,9 @@ import os
 
 
 from .EC2Node import EC2Node
-from .EC2NodeCluster import EC2NodeCluster
 from .ConfigCluster import ConfigCluster
+from .EC2NodeCluster import EC2NodeCluster
+
 
 
 
@@ -28,9 +29,13 @@ def _global_import(name, strict_sphinx=True):
             # print(k)
             if not k.startswith('__') and k not in __all__:
                 if strict_sphinx and k not in __SPHINX_STRICT__:
-                    # print(f'Skipped due to strict sphinx - {k}')
+                    print(f'Skipped due to strict sphinx - {k}')
                     continue
-                # print(f'Added - {k}: {p.__dict__[k]}')
+                if strict_sphinx and str(type(p.__dict__[k])) == "<class 'module'>":
+                    print(f'Skipped as is module, not class: {k}')
+                    continue
+                print(f'Added - {k}: {p.__dict__[k]}')
+                print(str(type(p.__dict__[k])))
                 globals()[k] = p.__dict__[k]
                 __all__.append(k)
 
@@ -38,7 +43,7 @@ def _global_import(name, strict_sphinx=True):
 _CURR_DIR = os.path.dirname(__file__)
 for _, module_name, _ in iter_modules(
        [_CURR_DIR]):
-    # print(f'MODULE - {module_name}')
+    print(f'MODULE - {module_name}')
     srcpath = os.path.join(_CURR_DIR, module_name + '.py')
     if not os.path.isfile(srcpath):
         continue

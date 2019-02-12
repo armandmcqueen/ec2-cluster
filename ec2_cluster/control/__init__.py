@@ -2,7 +2,6 @@ from pkgutil import iter_modules
 import os
 
 
-from .RemoteShell import RemoteShell
 from .ClusterShell import ClusterShell
 
 
@@ -11,8 +10,7 @@ from .ClusterShell import ClusterShell
 
 
 
-__SPHINX_STRICT__ = ["ClusterShell",
-                     "RemoteShell"]
+__SPHINX_STRICT__ = ["ClusterShell"]
 __all__ = []
 
 # Namespace improvement from Tensorpack.
