@@ -42,7 +42,7 @@ params:
     param_type: str
     param_desc: The username associated with the OS of the AMI, e.g. 'ubuntu' or 'ec2-user'
 
-  - param_name: ebs_optimized_instance
+  - param_name: ebs_optimized
     param_type: bool
     param_desc: >
       Whether or not the instance is EBS optimized. By default this is true, which is the
@@ -50,15 +50,15 @@ params:
       to be set to false. Always leave this as True unless you get errors saying 'EBS-optimized instances are not
       supported for your requested configuration'
 
-  - param_name: ebs_type
+  - param_name: volume_type
     param_type: str
     param_desc: The type of the EBS volume
 
-  - param_name: ebs_iops
+  - param_name: iops
     param_type: int
     param_desc: If using 'io1' EBS type, the number of IOPS to provision
 
-  - param_name: ebs_gbs
+  - param_name: volume_gbs
     param_type: int
     param_desc: The size of the EBS volume to provision (in Gigabytes)
 
@@ -70,15 +70,15 @@ params:
     param_type: int
     param_desc: The number of nodes to have in the cluster
 
-  - param_name: iam_role
+  - param_name: iam_ec2_role_name
     param_type: str
     param_desc: The name of the IAM role to be attached to the nodes
 
-  - param_name: key_pair_name
+  - param_name: key_name
     param_type: str
     param_desc: The name of the EC2 KeyPair
 
-  - param_name: sg_list
+  - param_name: security_group_ids
     param_type: list
     param_desc: >
       A list of security groups to attach. If not defined in config.yaml or command

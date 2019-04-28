@@ -85,9 +85,9 @@ class EC2NodeCluster:
 
     @property
     def private_ips(self):
-        """A list of private IPs for the nodes in the cluster.
+        """The list of private IPs for the nodes in the cluster.
 
-        All nodes must be in RUNNING or PENDING stats. Always in the same order: [Master, Worker1, Worker2, etc...]
+        All nodes must be in RUNNING or PENDING stats. Output is always in the same order: [Master, Worker1, Worker2, etc...]
         """
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
@@ -97,7 +97,7 @@ class EC2NodeCluster:
     def public_ips(self):
         """A list of public IPs for the nodes in the cluster.
 
-        All nodes must be in RUNNING or PENDING stats. Always in the same order: [Master, Worker1, Worker2, etc...]
+        All nodes must be in RUNNING or PENDING stats. Output is always in the same order: [Master, Worker1, Worker2, etc...]
         """
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("No nodes are running for this cluster!")
@@ -273,9 +273,6 @@ class EC2NodeCluster:
 
 
 
-    # max_timeout_secs is on a per-node basis: successfully launching a node resets the timeout timer.
-    # max_timeout_secs=None to retry forever
-    # wait_secs is how long we wait between attempts to launch ec2 node.
     def launch(self,
                az,
                vpc_id,

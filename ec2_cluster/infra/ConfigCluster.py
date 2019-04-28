@@ -6,6 +6,9 @@ from ec2_cluster.infra import EC2NodeCluster
 
 
 class AttrDict(dict):
+    """
+    Class for working with dicts using dot notation
+    """
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
@@ -14,7 +17,21 @@ class AttrDict(dict):
         return json.dumps(self.__dict__, indent=4)
 
 
+
 class ConfigCluster:
+    """Class for defining an EC2NodeCluster in a config file
+
+    Lightweight wrapper around EC2NodeCluster where you define the launch configuration at instantiation time instead
+    of at runtime. Configuration values are loaded from a YAML file, with values optionally overwritten in `__init__`.
+
+    Generally exposes the same API as EC2NodeCluster. The underlying EC2NodeCluster is always available via
+    `self.cluster`.
+
+    Args:
+        config_yaml_abspath: Path to a yaml configuration file
+        other_args: Dictionary containing additional configuration values which will overwrite values from the
+                    config file
+    """
     def __init__(self, config_yaml_abspath=None, other_args=None):
         if other_args is None:
             other_args = {}
@@ -56,10 +73,17 @@ class ConfigCluster:
 
     @property
     def config(self):
+        """Get config AttrDict"""
         return self._config
 
 
     def validate_config_dict(self, config_dict):
+        """Validate that a given configuration is valid
+
+        Args:
+            config_dict: Dictionary of config values. Descriptions for each config field can be found in
+                        `clusterdef_params.yaml`
+        """
         # Some params are optional. Handle them separately later
         maybe_nonexistant_params = ["ebs_iops", 'ebs_optimized_instance', 'additional_tags']
 
@@ -88,59 +112,111 @@ class ConfigCluster:
 
     @property
     def instance_ids(self):
+        """A list of InstanceIds for the nodes in the cluster.
+
+        All nodes must be in RUNNING or PENDING stats. Always in the same order: [Master, Worker1, Worker2, etc...]
+        """
         return self.cluster.instance_ids
 
     @property
     def private_ips(self):
+        """The list of private IPs for the nodes in the cluster.
+
+        All nodes must be in RUNNING or PENDING stats. Output is always in the same order: [Master, Worker1, Worker2, etc...]
+        """
         return self.cluster.private_ips
 
     @property
     def public_ips(self):
+        """A list of public IPs for the nodes in the cluster.
+
+        All nodes must be in RUNNING or PENDING stats. Output is always in the same order: [Master, Worker1, Worker2, etc...]
+        """
         return self.cluster.public_ips
 
     @property
     def cluster_sg_id(self):
+        """Return the Id of the ClusterSecurityGroup
+
+        When cluster is launched, a security group is created to allow the nodes to communicate with each other. This
+        is deleted when the cluster is terminated.
+
+        Raise exception if the ClusterSecurityGroup doesn't exist.
+        """
         return self.cluster.cluster_sg_id
 
 
     def any_node_is_running_or_pending(self):
+        """Return True if any node is in RUNNING or PENDING states"""
         return self.cluster.any_node_is_running_or_pending()
 
 
     def wait_for_all_nodes_to_be_running(self):
+        """Blocks until all nodes are in the RUNNING state"""
         return self.cluster.wait_for_all_nodes_to_be_running()
 
     def wait_for_all_nodes_to_be_status_ok(self):
+        """Blocks until all nodes have passed the EC2 health check.
+
+        Once nodes are status OK, you can SSH to them. See EC2Node.wait_for_instance_to_be_status_ok() for details.
+        """
         return self.cluster.wait_for_all_nodes_to_be_status_ok()
 
     def wait_for_all_nodes_to_be_terminated(self):
+        """Blocks until all nodes are in the TERMINATED state"""
         return self.cluster.wait_for_all_nodes_to_be_terminated()
 
     def launch(self, verbose=False):
+        """Launch the cluster nodes using the config set in `__init__`
+
+        Will repeatedly try to launch instances until all nodes are launched or the timeout is reached.
+
+        Args:
+             verbose: True to print out detailed information about progress
+        """
+
         self.cluster.launch(az=self.config.az,
                             vpc_id=self.config.vpc_id,
                             subnet_id=self.config.subnet_id,
                             ami_id=self.config.ami_id,
                             ebs_snapshot_id=self.config.ebs_snapshot_id,
-                            ebs_gbs=self.config.ebs_gbs,
-                            ebs_type=self.config.ebs_type,
-                            key_pair_name=self.config.key_pair_name,
-                            sg_list=self.config.sg_list,
-                            iam_role=self.config.iam_role,
+                            volume_gbs=self.config.volume_gbs,
+                            volume_type=self.config.volume_type,
+                            key_name=self.config.key_name,
+                            security_group_ids=self.config.sg_list,
+                            iam_ec2_role_name=self.config.iam_ec2_role_name,
                             instance_type=self.config.instance_type,
                             use_placement_group=self.config.use_placement_group,
-                            ebs_iops=self.config.ebs_iops,
-                            ebs_optimized_instance=self.config.ebs_optimized_instance,
+                            iops=self.config.iops,
+                            ebs_optimized=self.config.ebs_optimized,
                             tags=self.config.additional_tags,
                             timeout_secs=self.config.cluster_create_timeout_secs,
                             verbose=verbose)
 
 
     def terminate(self, verbose=False):
+        """Terminate all nodes in the cluster and clean up security group and placement group
+
+        Args:
+            verbose: True to print out detailed information about progress.
+        """
         self.cluster.terminate(verbose=verbose)
 
     @property
     def ips(self):
+        """Get all public and private IPs for nodes in the cluster
+
+        All nodes must be in RUNNING or PENDING stats.
+
+        Returns:
+        ::
+            {
+                "master_public_ip": MasterPublicIp,
+                "worker_public_ips": [Worker1PublicIp, Worker2PublicIp, etc...]
+                "master_private_ip": MasterPrivateIp,
+                "worker_private_ips": [Worker1PrivateIp, Worker2PrivateIp, etc...]
+            }
+        """
         if not self.any_node_is_running_or_pending():
             raise RuntimeError("Cluster does not exist. Cannot list ips of cluster that does not exist")
 

@@ -246,9 +246,6 @@ class EC2Node:
         )
 
 
-
-
-
     def launch(self,
                az,
                vpc_id,
@@ -270,7 +267,7 @@ class EC2Node:
 
         """Launch an instance.
 
-        Raises exception is instance with the given Name is already RUNNING or PENDING.
+        Raises exception if instance with the given Name is already RUNNING or PENDING.
 
         :param az: The availability zone, e.g. 'us-east-1f'
         :param vpc_id: The id of the VPC, e.g. 'vpc-123456789'
