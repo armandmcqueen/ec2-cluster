@@ -30,6 +30,8 @@ sphinx-apidoc -o apidocs ../ec2_cluster \
 #   ec2_cluster.infra.EC2Node
 #   ec2_cluster.infra.EC2NodeCluster
 
-./test_sphinx_edit.sh
+./test_sphinx_edit_rst.sh
 
 make html
+
+./test_sphinx_edit_html.sh
