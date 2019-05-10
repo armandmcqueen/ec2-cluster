@@ -122,6 +122,44 @@ class ClusterShell:
 
         self._all_conns.run(cmd)
         print(f'run_on_all (default) complete. {humanize_float(time.time() - t0)} secs')
+
+        # Option from benchmarking changes
+        #
+        #   def run_cmd(conn, cmd, output_queue):
+        #
+        #   # randomly delay each thread to avoid overwhelming the SSH agent for large jobs
+        #   AVERAGE_WAIT_TIME = 5
+        #
+        #   while True:
+        #       try:
+        #         time.sleep(AVERAGE_WAIT_TIME*random.random())
+        #
+        #         out = conn.run(cmd)
+        #
+        #         if output_queue is not None:
+        #           output_queue.append(out)
+        #
+        #         break
+        #       except SSHException:
+        #         print('SSHException caught; will try again.')
+        #         continue
+        #
+        #
+        #
+        #
+        #     def _run_on_all(self, cmd):
+        #       threads = []
+        #       output_queue = []
+        #       threads.append(threading.Thread(target=run_cmd, args=(self._master_conn, cmd, output_queue)))
+        #       for conn in self._worker_conns:
+        #         threads.append(threading.Thread(target=run_cmd, args=(conn, cmd, None)))
+        #
+        #       for t in threads:
+        #         t.start()
+        #       for t in threads:
+        #         t.join()
+        #
+        #       return output_queue.pop()
         return
 
 
