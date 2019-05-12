@@ -1,5 +1,7 @@
-
+import yaml
 import boto3
+import os
+
 
 def get_dlamis(region, ami_type="Ubuntu"):
 
@@ -76,10 +78,11 @@ def get_my_amis(region):
 
     return sorted(images, key = lambda i: i['Name'])
 
-# if __name__ == '__main__':
 
-    # images = get_dlamis()
-    # images = get_my_amis()
-    #
-    # for image in images:
-    #     print(image)
+def get_config_params():
+    path_to_containing_dir = os.path.dirname(os.path.realpath(__file__))
+    param_list_yaml_abspath = os.path.join(path_to_containing_dir, "clusterdef_params.yaml")
+    config_param_list = yaml.load(open(param_list_yaml_abspath, 'r'))["params"]
+    return config_param_list
+
+

@@ -897,7 +897,7 @@ class ConfigCluster:
 
 
         # Pull in list of params
-        param_list_yaml_abspath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../params/clusterdef_params.yaml")
+        param_list_yaml_abspath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clusterdef_params.yaml")
         with open(param_list_yaml_abspath, 'r') as f:
             self.paramdef_list = yaml.load(f)["params"]
 

@@ -4,17 +4,24 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="ec2_cluster",
-    version="0.0.0a3",
-    author="Armand McQueen",
-    author_email="armandmcqueen@gmail.com",
-    description="A tool for launching and running commands on a cluster of EC2 instances",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url="https://github.com/armandmcqueen/ec2-cluster",
-    packages=setuptools.find_packages(),
-    classifiers=[
-        "Programming Language :: Python :: 3.6"
-    ],
-    scripts=['cli/ec2-cluster-ctl']
+        name="ec2_cluster",
+        version="0.2.0",
+        author="Armand McQueen",
+        author_email="armandmcqueen@gmail.com",
+        description="A tool for launching and running commands on a cluster of EC2 instances",
+        long_description=long_description,
+        long_description_content_type="text/markdown",
+        url="https://github.com/armandmcqueen/ec2-cluster",
+        packages=setuptools.find_packages(),
+        include_package_data=True,
+        classifiers=[
+            "Programming Language :: Python :: 3.6"
+        ],
+        install_requires=[
+            'fabric2',
+            'boto3',
+            'pyyaml',
+            'tabulate'
+        ],
+        scripts=['cli/ec3']
 )
