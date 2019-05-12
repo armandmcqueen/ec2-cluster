@@ -2,11 +2,11 @@
 
 Describe the cluster configuration in a yaml file and then use the CLI to create, delete and retrieve details about the cluster.
 
-`./cc create config.yaml`
+`ec3 create config.yaml`
 
-`./cc describe config.yaml`
+`ec3 describe config.yaml`
 
-`./cc delete config.yaml`
+`ec3 delete config.yaml`
 
 
 ## Quick Start
@@ -15,25 +15,25 @@ Describe the cluster configuration in a yaml file and then use the CLI to create
 
 Create a config file with information about VPC, AMI and cluster size. See [this example config](configs/test.yaml).
 
-`./cc utils describe-config` to see details about the params in config.yaml.
+`ec3 utils describe-config` to see details about the params in config.yaml.
 
 
 
-`./cc utils list-amis` and `./cc utils list-dlami` will help you find the AMI ids and the EBS snapshot ids for your AMI or for AWS's Deep Learning AMI, respectively.
+`ec3 utils list-amis` and `ec3 utils list-dlami` will help you find the AMI ids and the EBS snapshot ids for your AMI or for AWS's Deep Learning AMI, respectively.
 
 #### Create the cluster
 
-Run `./cc create config.yaml` to create the cluster. It should happen in about 1 minute. Add the `--verbose` flag if it doesn't seem to be working.
+Run `ec3 create config.yaml` to create the cluster. It should happen in about 1 minute. Add the `--verbose` flag if it doesn't seem to be working.
 
-`./cc describe config.yaml` will list the public and private IPs of the nodes in the cluster.
+`ec3 describe config.yaml` will list the public and private IPs of the nodes in the cluster.
 
-`./cc delete config.yaml` will tear the cluster down.
+`ec3 delete config.yaml` will tear the cluster down.
 
 ## Horovod
 
-Running Horovod requires a little setup to allow mpirun to SSH between nodes. This can be done when you create the cluster with  `./cc create config.yaml --horovod`
+Running Horovod requires a little setup to allow mpirun to SSH between nodes. This can be done when you create the cluster with  `ec3 create config.yaml --horovod`
 
-This is equivalent to  `./cc create config.yaml` followed by `./cc setup-horovod config.yaml`
+This is equivalent to  `ec3 create config.yaml` followed by `ec3 setup-horovod config.yaml`
 
 ## Naming
 
@@ -52,22 +52,22 @@ A common use case is to create multiple identical clusters to run training jobs 
 
 To enable this, you can overwrite any param in config.yaml at create time:
 
-- `./cc create config.yaml --cluster_id=2`
-- `./cc create config.yaml --node_count=2`
-- `./cc create config.yaml --volume_gbs=500`
+- `ec3 create config.yaml --cluster_id=2`
+- `ec3 create config.yaml --node_count=2`
+- `ec3 create config.yaml --volume_gbs=500`
 
-NOTE: If you overwrite `cluster_template_name`, `node_count` or `cluster_id`, you will create a cluster with a new name so you will need to pass in that flag any other time you want to use `cc` to control that cluster. Overwriting any other flag does not change the name.
+NOTE: If you overwrite `cluster_template_name`, `node_count` or `cluster_id`, you will create a cluster with a new name so you will need to pass in that flag any other time you want to use `ec3` to control that cluster. Overwriting any other flag does not change the name.
 
 The following list of commands and results illustrates this.
 
-- `./cc create config.yaml` will create `ec2-cluster-test-2node-cluster1`
-- `./cc create config.yaml --cluster_id=2` will create `ec2-cluster-test-2node-cluster2`
-- `./cc create config.yaml --cluster_id=3 --volume_gbs=500` will create `ec2-cluster-test-2node-cluster3`
-- `./cc create config.yaml --volume_gbs=500` will try to create `ec2-cluster-test-2node-cluster1` and fail because it already exists
-- `./cc create config.yaml --cluster_id=2 --node_count=4` will create `ec2-cluster-test-4node-cluster2`
-- `./cc delete config.yaml` will delete `ec2-cluster-test-2node-cluster1`
-- `./cc delete config.yaml --node_count=4` will fail because `ec2-cluster-test-4node-cluster1` does not exist
-- `./cc delete config.yaml --cluster_id=3` will successfully delete `ec2-cluster-test-2node-cluster3` despite skipping the `--volume_gbs` flag.
+- `ec3 create config.yaml` will create `ec2-cluster-test-2node-cluster1`
+- `ec3 create config.yaml --cluster_id=2` will create `ec2-cluster-test-2node-cluster2`
+- `ec3 create config.yaml --cluster_id=3 --volume_gbs=500` will create `ec2-cluster-test-2node-cluster3`
+- `ec3 create config.yaml --volume_gbs=500` will try to create `ec2-cluster-test-2node-cluster1` and fail because it already exists
+- `ec3 create config.yaml --cluster_id=2 --node_count=4` will create `ec2-cluster-test-4node-cluster2`
+- `ec3 delete config.yaml` will delete `ec2-cluster-test-2node-cluster1`
+- `ec3 delete config.yaml --node_count=4` will fail because `ec2-cluster-test-4node-cluster1` does not exist
+- `ec3 delete config.yaml --cluster_id=3` will successfully delete `ec2-cluster-test-2node-cluster3` despite skipping the `--volume_gbs` flag.
 
 
 
