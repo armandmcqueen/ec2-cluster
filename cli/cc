@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+
+
+import argparse
+
+from cli_core import handle_core
+from cli_utils import handle_utils
+
+
+
+
+
+
+
+
+
+
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(add_help=False)
+
+    parser.add_argument("action",
+                        choices=["help",
+                                 "create",
+                                 "delete",
+                                 "describe",
+                                 "ssh-cmd",
+                                 "test",
+                                 "setup-horovod",
+                                 "utils"])
+
+    args, leftovers = parser.parse_known_args()
+
+    if args.action == 'help':
+        help_output = "\n"\
+                      "Command line utility for working with clusters of EC2 instances, primarily for deep learning.\n"\
+                      "Available commands are: \n" \
+                      "     create: Create a cluster\n" \
+                      "     delete: Delete a cluster\n" \
+                      "     describe: List the public and private IPs of the nodes in the cluster\n" \
+                      "     ssh-cmd: Print command to ssh to master node\n" \
+                      "     setup-horovod: Setup ssh in the cluster to enable Horovod. Can be done at create time\n" \
+                      "                    with --horovod flag\n" \
+                      "     utils: Various utilities such as listing the details of the DLAMIs or listing details\n" \
+                      "            of your AMIs\n"
+        print(help_output)
+        quit()
+    else:
+        if args.action in ['create', 'delete', 'describe', 'ssh-cmd', 'setup-horovod', 'test']:
+            handle_core()
+        elif args.action == 'utils':
+            handle_utils()
+        else:
+            print(f'Unrecognized action "{args.action}". This error should have been caught by argparse and this '
+                  f'line should not have been printed.')
+
+

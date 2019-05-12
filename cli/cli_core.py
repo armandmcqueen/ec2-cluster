@@ -4,9 +4,9 @@ import argparse
 import os
 import yaml
 
-import ConfigCluster
+from ec2_cluster.infra import ConfigCluster
 from ec2_cluster.control import ClusterShell
-import PasswordlessSSH
+from ec2_cluster.orch import set_up_passwordless_ssh_from_master_to_workers
 
 
 # Translate `param_type` string in clusterdef_params to Python type for argparse arguments
@@ -24,10 +24,20 @@ def parse_type(type_as_str):
     else:
         raise RuntimeError(f'Unrecognized type string: {type_as_str}')
 
+def horovod_setup(cluster, ssh_key_path, ssh_to_private_ip=False):
+    master_ip = cluster.ips["master_public_ip"] if not ssh_to_private_ip else cluster.ips["master_private_ip"]
+    worker_ips = cluster.ips["worker_private_ips"]
+    shell = ClusterShell(cluster.config.username,
+                         master_ip,
+                         worker_ips,
+                         ssh_key_path=ssh_key_path,
+                         use_bastion=False)
+    set_up_passwordless_ssh_from_master_to_workers(shell, master_ip, worker_ips=worker_ips)
 
-if __name__ == '__main__':
+
+def handle_core():
     path_to_containing_dir = os.path.dirname(os.path.realpath(__file__))
-    param_list_yaml_abspath = os.path.join(path_to_containing_dir, "../ec2_cluster/infra/clusterdef_params.yaml")
+    param_list_yaml_abspath = os.path.join(path_to_containing_dir, "../params/clusterdef_params.yaml")
     with open(param_list_yaml_abspath, 'r') as f:
         cluster_param_list = yaml.load(f)["params"]
 
@@ -35,34 +45,38 @@ if __name__ == '__main__':
 
     parser.add_argument(
             "action",
-            help="Action to take. Create cluster, delete cluster, describe cluster ips, "
-                 "output ssh cmd string",
-            choices=["create", "terminate", "describe", "ssh_cmd", "horovod_setup", "test"])
+            choices=["create", "delete", "describe", "ssh-cmd", "setup-horovod", "test"])
+
+    parser.add_argument(
+            "config",
+            help="Path to config YAML file describing cluster")
 
     parser.add_argument(
             "--verbose",
             action="store_true")
 
-    parser.add_argument(
-            "--config",
-            help="Path to yaml file with default cluster def params. Defaults can be overwritten by "
-                 "additional command line arguments")
 
     parser.add_argument(
             "--ssh_to_private_ip",
-            help="Add this flag if you want the ssh_cmd or horovod_setup to use the private IP for the master instead of the public IP.",
+            help="Add this flag if you want the ssh-cmd or horovod-setup to use the private IP for the master instead "
+                 "of the public IP. Typically this is only needed when you are running this CLI from an EC2 node "
+                 "instead of your local machine.",
             action="store_true")
 
     parser.add_argument(
             "--clean_create",
-            help="Rebuild cluster cleanly? By default, will reuse cluster if one with the correct name "
-                 "already exists. Does not detect mismatches between existing cluster and desired cluster",
+            help="By default, create will fail if a cluster with this name already exists. With this flag, will instead"
+                 "delete the existing cluster and launch a new one.",
+            action="store_true")
+
+    parser.add_argument(
+            "--horovod",
+            help="When creating this cluster, use --horovod to do horovod-setup after nodes are launched.",
             action="store_true")
 
     parser.add_argument(
             "--ssh_key_path",
-            help="Absolute path to your local ssh_key. Required for horovod_setup"
-    )
+            help="Absolute path to your local ssh_key. Required for horovod_setup or when using --horovod with create")
 
     # Add all the ClusterDef params as CLI arguments
     for param in cluster_param_list:
@@ -76,6 +90,8 @@ if __name__ == '__main__':
 
     if args.action == "test":
         args.verbose = True
+        print("Tested!")
+        quit()
 
     def vlog(s):
         if args.verbose:
@@ -122,12 +138,19 @@ if __name__ == '__main__':
         cluster.launch(verbose=args.verbose)
         vlog("Cluster launched")
 
+        if args.horovod:
+            vlog("Starting Horovod setup")
+            assert args.ssh_key_path is not None, "If using --horovod, you must provide --ssh_key_path"
+            horovod_setup(cluster, args.ssh_key_path, ssh_to_private_ip=args.ssh_to_private_ip)
+            vlog("Finished Horovod setup")
 
-    elif args.action == "terminate":
+
+
+    elif args.action == "delete":
         if cluster.any_node_is_running_or_pending():
-            vlog("Starting terminate")
+            vlog("Starting delete")
             cluster.terminate(verbose=args.verbose)
-            vlog("Termination complete")
+            vlog("Deletion complete")
         else:
             raise RuntimeError("Cannot terminate. The cluster does not exist.")
 
@@ -147,18 +170,14 @@ if __name__ == '__main__':
             ssh_ip = cluster.ips["master_public_ip"] if not args.ssh_to_private_ip else cluster.ips["master_private_ip"]
             print(f'ssh -A {cluster.config.username}:{ssh_ip}')
 
-    elif args.action == "horovod_setup":
+    elif args.action == "horovod-setup":
         if not cluster.any_node_is_running_or_pending():
             raise RuntimeError("Cannot run horovod setup. The cluster does not exist")
         else:
-            master_ip = cluster.ips["master_public_ip"] if not args.ssh_to_private_ip else cluster.ips["master_private_ip"]
-            worker_ips = cluster.ips["worker_private_ips"]
-            shell = ClusterShell(cluster.config.username,
-                                 master_ip,
-                                 worker_ips,
-                                 ssh_key_path=args.ssh_key_path,
-                                 use_bastion=False)
-            PasswordlessSSH.set_up_passwordless_ssh_from_master_to_workers(shell, master_ip, worker_ips=worker_ips)
+            vlog("Starting Horovod setup")
+            assert args.ssh_key_path is not None, "If using horovod-setup, you must provide --ssh_key_path"
+            horovod_setup(cluster, args.ssh_key_path, ssh_to_private_ip=args.ssh_to_private_ip)
+            vlog("Finished Horovod setup")
 
 
 

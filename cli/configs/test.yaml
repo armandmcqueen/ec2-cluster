@@ -19,21 +19,21 @@ ebs_snapshot_id: "snap-013f2dc8c2ecc97d9"
 username: "ubuntu"
 
 # EBS
-ebs_type: "gp2"
-ebs_gbs: 100
+volume_type: "gp2"
+# iops: 5000
+volume_gbs: 100
 
 # Launch Settings
 instance_type: "t3.nano"
 node_count: 2
 
-iam_role: "ec2-cluster-test-role"
-key_pair_name: "ec2-cluster-test"
-sg_list:
+iam_ec2_role_name: "ec2-cluster-test-role"
+key_name: "ec2-cluster-test"
+security_group_ids:
   - "sg-08f2dd4548d863796" # armand-ssh
 
 
 
 # EC2Cluster behavior args
 cluster_create_timeout_secs: 600 # Fail after 10 minutes without an increase in the cluster size
-use_placement_group: No
-ebs_optimized_instance: No
+ebs_optimized: No

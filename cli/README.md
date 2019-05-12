@@ -1,5 +1,21 @@
 # EC2 Cluster CLI
 
+
+# Quick start
+
+`ecc create config.yaml --horovod`
+
+`ecc delete config.yaml`
+
+`ecc utils list-dlamis --region=us-east-1`
+
+`ecc utils list-amis --region=us-east-1`
+
+`ecc utils describe-params`
+
+
+
+
 ### create
 
 Will create a cluster if does not exist. If clean_create, will delete the cluster and create it anew. If not clean_create and a cluster already exists, will raise RuntimeError and do nothing.
