@@ -1,6 +1,7 @@
 fabric2
 boto3
 pyyaml
+tabulate
 
 setuptools
 sphinx

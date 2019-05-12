@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 
-
-
 import argparse
 import os
 import yaml
 
-from ec2_cluster.infra import ConfigCluster
+import ConfigCluster
 from ec2_cluster.control import ClusterShell
-from ec2_cluster.orch import PasswordlessSSH
+import PasswordlessSSH
 
 
 # Translate `param_type` string in clusterdef_params to Python type for argparse arguments

@@ -6,7 +6,8 @@ try:
 except ImportError:
     import json
 
-from ec2_cluster.infra import EC2NodeCluster
+import EC2NodeCluster
+
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
