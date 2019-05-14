@@ -52,11 +52,11 @@ params:
 
   - param_name: volume_type
     param_type: str
-    param_desc: The type of the EBS volume
+    param_desc: The type of the EBS volume. 'gp2', 'io1', etc.
 
   - param_name: iops
     param_type: int
-    param_desc: If using 'io1' EBS type, the number of IOPS to provision
+    param_desc: If using 'io1' EBS type, the number of IOPS to provision.
 
   - param_name: volume_gbs
     param_type: int
@@ -64,7 +64,7 @@ params:
 
   - param_name: instance_type
     param_type: str
-    param_desc: The API name of the desired instance type, e.g. 'p3.16xl' or 't2.micro'
+    param_desc: The API name of the desired instance type, e.g. 'p3.16xlarge' or 't2.micro'. Note - '16xlarge', not '16xl'
 
   - param_name: node_count
     param_type: int
