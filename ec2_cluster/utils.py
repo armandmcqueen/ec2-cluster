@@ -65,7 +65,10 @@ def get_my_amis(region):
     images = []
     for image in response['Images']:
         name = image['Name']
-        description = image['Description']
+        if 'Description' in image.keys():
+            description = image['Description']
+        else:
+            description = "No description available"
         image_id = image['ImageId']
         snapshot_id = image['BlockDeviceMappings'][0]['Ebs']['SnapshotId']
 
