@@ -2,6 +2,8 @@
 .ignored/
 venv/
 
+cli/configs/armand*
+
 *__pycache__*
 .DS_Store
 
