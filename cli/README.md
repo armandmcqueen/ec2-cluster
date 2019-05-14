@@ -35,6 +35,8 @@ Running Horovod requires a little setup to allow mpirun to SSH between nodes. Th
 
 This is equivalent to  `ec3 create config.yaml` followed by `ec3 setup-horovod config.yaml`
 
+This will also create a hostfile on the master node. 
+
 ## Naming
 
 ec2-cluster keeps track of nodes by using the 'Name' tag in EC2. For a given node, the Name must be unique in a region.

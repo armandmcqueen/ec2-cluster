@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 
-
-
-
-
-
 import argparse
 import os
-import yaml
 from tabulate import tabulate
 
 from ec2_cluster.utils import get_dlamis, get_my_amis, get_config_params
 from ec2_cluster.infra import ConfigCluster
 from ec2_cluster.control import ClusterShell
-from ec2_cluster.orch import set_up_passwordless_ssh_from_master_to_workers
+from ec2_cluster.orch import set_up_passwordless_ssh_from_master_to_workers, generate_hostfile
 
 
 
@@ -46,7 +40,20 @@ def parse_type(type_as_str):
     else:
         raise RuntimeError(f'Unrecognized type string: {type_as_str}')
 
-def horovod_setup(cluster, ssh_key_path, ssh_to_private_ip=False):
+def horovod_setup(cluster, ssh_key, slots, ssh_to_private_ip=False):
+
+    if ssh_key.startswith("/"):
+        ssh_key_path = ssh_key
+    else:
+        if not ssh_key.endswith('.pem'):
+            ssh_key += '.pem'
+        ssh_key_path_dir = os.path.expanduser('~/.ssh/')
+        ssh_key_path = os.path.join(ssh_key_path_dir, ssh_key)
+
+    assert os.path.isfile(ssh_key_path), f'Did not find an SSH key at ${ssh_key_path}\n' \
+                                         f'If the key is not located at ~/.ssh/$KEY_NAME.pem, use the --ssh_key flag to ' \
+                                         f'specify the absolute path to the key'
+
     master_ip = cluster.ips["master_public_ip"] if not ssh_to_private_ip else cluster.ips["master_private_ip"]
     worker_ips = cluster.ips["worker_private_ips"]
     shell = ClusterShell(cluster.config.username,
@@ -54,7 +61,12 @@ def horovod_setup(cluster, ssh_key_path, ssh_to_private_ip=False):
                          worker_ips,
                          ssh_key_path=ssh_key_path,
                          use_bastion=False)
-    set_up_passwordless_ssh_from_master_to_workers(shell, master_ip, worker_ips=worker_ips)
+    set_up_passwordless_ssh_from_master_to_workers(shell, master_ip, worker_ips=worker_ips, verbose=True)
+
+    generate_hostfile(cluster, shell, slots, use_localhost=False)
+
+
+
 
 
 def handle_core():
@@ -94,8 +106,15 @@ def handle_core():
             action="store_true")
 
     parser.add_argument(
-            "--ssh_key_path",
-            help="Absolute path to your local ssh_key. Required for horovod_setup or when using --horovod with create")
+            "--ssh_key",
+            help="Name of your ssh key. If not an absolute path, assumes key is located at ~/.ssh/$SSH_KEY.pem Absolute "
+                 "path to your local ssh_key. Required for horovod_setup or when using --horovod with create")
+
+    parser.add_argument(
+            "--slots",
+            help="For setup-horovod or create --horovod, the number of slots on each host to put in the hostfile. "
+                 "Defaults to 8, correct for p3.16xl and p3dn.24xl",
+            default=8)
 
     # Add all the ClusterDef params as CLI arguments
     for param in cluster_param_list:
@@ -114,7 +133,10 @@ def handle_core():
 
     def vlog(s):
         if args.verbose:
-            print(f'[cli_v2.py] {s}')
+            print(f'[ec3-verbose] {s}')
+
+    def log(s):
+        print(f'[ec3] {s}')
 
 
     # Extract any ClusterDef params from CLI arguments the user passed in
@@ -135,6 +157,9 @@ def handle_core():
     cluster = ConfigCluster(config_yaml_abspath, other_args=cli_args)
     vlog(f'Final config: {cluster.config}')
 
+    # If you don't explicitly pass in the ssh_key_path, will default to the key_name in config.yaml, located at ~/.ssh/$KEY_NAME.pem
+    if args.ssh_key is None:
+        args.ssh_key = cluster.config.key_name
 
 
 
@@ -153,28 +178,35 @@ def handle_core():
                 cluster.terminate(verbose=True) # Verbose here outputs important information instead of no output.
                 vlog("cleaned.")
 
-        vlog("Launching cluster")
+        log("Launching cluster")
         cluster.launch(verbose=True) # Verbose here outputs important information instead of no output.
-        vlog("Cluster launched")
+        log("Cluster launched")
 
         if args.horovod:
-            vlog("Starting Horovod setup")
-            assert args.ssh_key_path is not None, "If using --horovod, you must provide --ssh_key_path"
-            horovod_setup(cluster, args.ssh_key_path, ssh_to_private_ip=args.ssh_to_private_ip)
-            vlog("Finished Horovod setup")
+            try:
+                log("Starting Horovod setup")
+                horovod_setup(cluster, args.ssh_key, args.slots, ssh_to_private_ip=args.ssh_to_private_ip)
+                log("Finished Horovod setup")
+            except Exception as ex:
+                if "[Errno None] Unable to connect to port 22" in str(ex):
+                    # This happens sometimes, probably due to the node not quite being ready. Retry
+                    log("Unable to connect, probably because the node wasn't quite ready. Retrying")
+                    horovod_setup(cluster, args.ssh_key, args.slots, ssh_to_private_ip=args.ssh_to_private_ip)
+                    log("Finished Horovod setup")
+
 
 
 
     elif args.action == "delete":
         if cluster.any_node_is_running_or_pending():
-            vlog("Starting delete")
+            log("Starting delete")
             cluster.terminate(verbose=True) # Verbose here outputs important information instead of no output.
-            vlog("Deletion complete")
+            log("Deletion complete")
         else:
             raise RuntimeError("Cannot terminate. The cluster does not exist.")
 
     elif args.action == "describe":
-        vlog("describe output:")
+        vlog("describe")
         if not cluster.any_node_is_running_or_pending():
             print("Cluster does not exist")
         else:
@@ -182,21 +214,21 @@ def handle_core():
 
 
 
-    elif args.action == "ssh_cmd":
+    elif args.action == "ssh-cmd":
         if not cluster.any_node_is_running_or_pending():
             raise RuntimeError("Cannot print SSH command. The cluster does not exist")
         else:
             ssh_ip = cluster.ips["master_public_ip"] if not args.ssh_to_private_ip else cluster.ips["master_private_ip"]
-            print(f'ssh -A {cluster.config.username}:{ssh_ip}')
+            print(f'ssh -A {cluster.config.username}@{ssh_ip}')
 
     elif args.action == "setup-horovod":
         if not cluster.any_node_is_running_or_pending():
             raise RuntimeError("Cannot run horovod setup. The cluster does not exist")
         else:
-            vlog("Starting Horovod setup")
-            assert args.ssh_key_path is not None, "If using horovod-setup, you must provide --ssh_key_path"
-            horovod_setup(cluster, args.ssh_key_path, ssh_to_private_ip=args.ssh_to_private_ip)
-            vlog("Finished Horovod setup")
+
+            log("Starting Horovod setup")
+            horovod_setup(cluster, args.ssh_key, args.slots, ssh_to_private_ip=args.ssh_to_private_ip)
+            log("Finished Horovod setup")
 
 
 
@@ -324,7 +356,9 @@ if __name__ == '__main__':
                       "     setup-horovod: Setup ssh in the cluster to enable Horovod. Can be done at create time\n" \
                       "                    with --horovod flag\n" \
                       "     utils: Various utilities such as listing the details of the DLAMIs or listing details\n" \
-                      "            of your AMIs\n"
+                      "            of your AMIs\n" \
+                      "\n" \
+                      "Check help for individual commands (ec3 cmd -h) to see more details."
         print(help_output)
         quit()
     else:
