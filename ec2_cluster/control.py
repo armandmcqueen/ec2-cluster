@@ -89,16 +89,17 @@ class ClusterShell:
         return subprocess.check_output(shlex.split(cmd))
 
 
-    def run_on_master(self, cmd):
+    def run_on_master(self, cmd, **kwargs):
         """Run a shell command on the master node.
 
         Args:
             cmd: The shell command to run
+            kwargs: http://docs.fabfile.org/en/2.4/api/connection.html#fabric.connection.Connection.run
 
         Returns:
             Result: An invoke Result object. `http://docs.pyinvoke.org/en/latest/api/runners.html#invoke.runners.Result`
         """
-        return self._master_conn.run(cmd)
+        return self._master_conn.run(cmd, **kwargs)
 
 
     def run_on_all(self, cmd):
