@@ -1,1 +1,1 @@
-include *.yaml
+include ec2_cluster/*.yaml

@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
         name="ec2_cluster",
-        version="0.2.0",
+        version="0.3.0",
         author="Armand McQueen",
         author_email="armandmcqueen@gmail.com",
         description="A tool for launching and running commands on a cluster of EC2 instances",
@@ -21,7 +21,8 @@ setuptools.setup(
             'fabric2',
             'boto3',
             'pyyaml',
-            'tabulate'
+            'tabulate',
+            'cryptography==2.4.2'
         ],
         scripts=['cli/ec3']
 )
