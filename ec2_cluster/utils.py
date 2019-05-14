@@ -82,7 +82,7 @@ def get_my_amis(region):
 def get_config_params():
     path_to_containing_dir = os.path.dirname(os.path.realpath(__file__))
     param_list_yaml_abspath = os.path.join(path_to_containing_dir, "clusterdef_params.yaml")
-    config_param_list = yaml.load(open(param_list_yaml_abspath, 'r'))["params"]
+    config_param_list = yaml.safe_load(open(param_list_yaml_abspath, 'r'))["params"]
     return config_param_list
 
 

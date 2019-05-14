@@ -580,13 +580,14 @@ class EC2NodeCluster:
         return self._cluster_sg_id
 
 
-    def create_cluster_sg(self, vpc_id):
+    def create_cluster_sg(self, vpc_id, verbose=False):
         """Create the ClusterSecurityGroup that allows nodes to communicate with each other.
 
         :param vpc_id: The Id of the VPC that the cluster is in.
         """
+        vlog = self._get_vlog(verbose, 'EC2NodeCluster.create_cluster_sg')
         if self.security_group_exists(self.cluster_sg_name):
-            print("Cluster SG already exists. No need to recreate")
+            vlog("Cluster SG already exists. No need to recreate")
             return
 
         response = self.ec2_client.create_security_group(
@@ -766,7 +767,7 @@ class EC2NodeCluster:
             raise RuntimeError("Nodes with names matching this cluster already exist!")
 
         vlog("Creating cluster SG if needed")
-        self.create_cluster_sg(vpc_id)
+        self.create_cluster_sg(vpc_id, verbose=verbose)
         security_group_ids.append(self.cluster_sg_id)
 
         if use_placement_group:
@@ -899,7 +900,7 @@ class ConfigCluster:
         # Pull in list of params
         param_list_yaml_abspath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clusterdef_params.yaml")
         with open(param_list_yaml_abspath, 'r') as f:
-            self.paramdef_list = yaml.load(f)["params"]
+            self.paramdef_list = yaml.safe_load(f)["params"]
 
 
         # Use yaml arguments as base if yaml file path was input
@@ -907,7 +908,7 @@ class ConfigCluster:
             config_dict = {}
         else:
             with open(config_yaml_abspath, 'r') as yml:
-                config_dict = yaml.load(yml)
+                config_dict = yaml.safe_load(yml)
 
 
         # Add the other_args, overwriting the yaml arguments if the param is defined in both

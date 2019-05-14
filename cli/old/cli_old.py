@@ -130,7 +130,7 @@ if __name__ == "__main__":
 
     param_list_yaml_abspath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clusterdef_params.yaml")
     with open(param_list_yaml_abspath, 'r') as f:
-        cluster_param_list = yaml.load(f)["params"]
+        cluster_param_list = yaml.safe_load(f)["params"]
 
     parser = argparse.ArgumentParser()
 
@@ -186,7 +186,7 @@ if __name__ == "__main__":
         config_yaml_abspath = args.config if args.config.startswith("/") else os.path.join(os.getcwd(), args.config)
         vlog(f'Loading default params from {config_yaml_abspath}')
         with open(config_yaml_abspath, 'r') as yml:
-            cluster_configs = yaml.load(yml)
+            cluster_configs = yaml.safe_load(yml)
         vlog(f'Default params from config yaml: {json.dumps(cluster_configs, indent=4)}')
 
 

@@ -29,7 +29,7 @@ if __name__ == '__main__':
     path_to_containing_dir = os.path.dirname(os.path.realpath(__file__))
     param_list_yaml_abspath = os.path.join(path_to_containing_dir, "../ec2_cluster/infra/clusterdef_params.yaml")
     with open(param_list_yaml_abspath, 'r') as f:
-        cluster_param_list = yaml.load(f)["params"]
+        cluster_param_list = yaml.safe_load(f)["params"]
 
     parser = argparse.ArgumentParser()
 
