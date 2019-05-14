@@ -150,11 +150,11 @@ def handle_core():
                                    "--clean_create flag?")
             else:
                 vlog("clean_create: terminating existing instances")
-                cluster.terminate(verbose=args.verbose)
+                cluster.terminate(verbose=True) # Verbose here outputs important information instead of no output.
                 vlog("cleaned.")
 
         vlog("Launching cluster")
-        cluster.launch(verbose=args.verbose)
+        cluster.launch(verbose=True) # Verbose here outputs important information instead of no output.
         vlog("Cluster launched")
 
         if args.horovod:
@@ -168,7 +168,7 @@ def handle_core():
     elif args.action == "delete":
         if cluster.any_node_is_running_or_pending():
             vlog("Starting delete")
-            cluster.terminate(verbose=args.verbose)
+            cluster.terminate(verbose=True) # Verbose here outputs important information instead of no output.
             vlog("Deletion complete")
         else:
             raise RuntimeError("Cannot terminate. The cluster does not exist.")
@@ -189,7 +189,7 @@ def handle_core():
             ssh_ip = cluster.ips["master_public_ip"] if not args.ssh_to_private_ip else cluster.ips["master_private_ip"]
             print(f'ssh -A {cluster.config.username}:{ssh_ip}')
 
-    elif args.action == "horovod-setup":
+    elif args.action == "setup-horovod":
         if not cluster.any_node_is_running_or_pending():
             raise RuntimeError("Cannot run horovod setup. The cluster does not exist")
         else:
@@ -278,7 +278,11 @@ def handle_utils():
     args, leftovers = parser.parse_known_args()
 
     if args.action == "list-dlami":
-        dlamis = get_dlamis(region=args.region, ami_type=args.dlami_type)
+        if args.dlami_type == 'AL':
+            dlami_type = "Amazon Linux"
+        else:
+            dlami_type = args.dlami_type
+        dlamis = get_dlamis(region=args.region, ami_type=dlami_type)
         display_ami_list(dlamis)
 
     elif args.action == "list-ami":
