@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
         name="ec2_cluster",
-        version="0.3.1",
+        version="0.3.2",
         author="Armand McQueen",
         author_email="armandmcqueen@gmail.com",
         description="A tool for launching and running commands on a cluster of EC2 instances",
@@ -18,11 +18,11 @@ setuptools.setup(
             "Programming Language :: Python :: 3.6"
         ],
         install_requires=[
+            'paramiko==2.5.1', # Bug in paramiko 2.6.0 (https://github.com/armandmcqueen/ec2-cluster/issues/10)
             'fabric2',
             'boto3',
             'pyyaml',
             'tabulate',
-            'cryptography==2.4.2'
         ],
         scripts=['cli/ec3']
 )

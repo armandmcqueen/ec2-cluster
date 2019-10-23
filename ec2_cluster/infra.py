@@ -29,9 +29,9 @@ class EC2Node:
     instance to reach a certain state, e.g. wait for status OK, after which you can SSH to the instance.
 
     This class is designed for managing long-running jobs without an always-on control plane. In order to do this, each
-    ``EC2Node``-managed instance in an AWS region has a unique Name (the value of the 'Name' tag). When you instantiate an
-    ``EC2Node``, you pass in this Name, which allows the code to query the EC2 API to see if that instance already exists
-    in EC2.
+    ``EC2Node``-managed instance in an AWS region has a unique Name (the value of the 'Name' tag in EC2). When you
+    instantiate an ``EC2Node``, you pass in this Name, which allows the code to query the EC2 API to see if that
+    instance already exists in EC2.
 
     This is generally an easy, intuitive way to keep track of which node is which across sessions. However, this means
     you have to careful with your node Names to ensure that there aren't accidental collisions, e.g. two teammates pick
@@ -44,8 +44,9 @@ class EC2Node:
     invisible.
         - ``EC2Node`` will not being able to wait for a node to be in TERMINATED state if you did not query the EC2 API
           for the InstanceId before it entered the SHUTTING-DOWN state.
-        - ``EC2Node`` will completely ignore any STOPPED nodes. Can lead to duplicate Names if the STOPPED nodes are then
-          started manually.
+
+    To terminate, `EC2Node` triggers termination and then wipes the Name tag so a new cluster with the same name can be
+    launched immediately without being affected by the current cluster while it shuts down.
     """
 
     def __init__(self, name, region, always_verbose=False):
@@ -755,11 +756,13 @@ class EC2NodeCluster:
             tags: List of custom tags to attach to the EC2 instance. List of dicts, each with a 'Key' and a 'Value'
                   field. Normal EC2 tag length restrictions apply. Key='Name' is reserved for EC2Node use.
             dry_run: True to make test EC2 API call that confirms syntax but doesn't actually launch the instance.
-            timeout_secs: The maximum number of seconds to spend launching the cluster nodes before timing out. None to
-                          never time out.
+            timeout_secs: The maximum number of seconds to spend launching the cluster nodes before timing out. Pass in
+                          None to never time out (None can be either the Python type or the string 'None')
             wait_secs: The number of seconds to wait before retrying launching a node.
             verbose: True to print out detailed information about progress.
         """
+        if timeout_secs == 'None':
+            timeout_secs = None
 
         vlog = self._get_vlog(verbose, 'EC2NodeCluster.launch')
 
@@ -888,7 +891,7 @@ class ConfigCluster:
     `self.cluster`.
 
     Args:
-        config_yaml_abspath: Path to a yaml configuration file
+        config_yaml_abspath: Path to a yaml configuration file. None to load all params from `other_args`.
         other_args: Dictionary containing additional configuration values which will overwrite values from the
                     config file
     """

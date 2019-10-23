@@ -47,7 +47,7 @@ class ClusterShell:
         self.use_bastion = use_bastion
 
         connect_kwargs = {
-            "key_filename": os.path.expanduser(ssh_key_path),
+            "key_filename": [os.path.expanduser(ssh_key_path)],
             "banner_timeout": 30    # NOTE 1 above
         }
 
@@ -109,21 +109,17 @@ class ClusterShell:
             cmd: The shell command to run
 
         Returns:
-             Nothing at the moment. This needs to be fixed.
+             # Dict of {Connection: Result} # http://docs.pyinvoke.org/en/latest/api/runners.html#invoke.runners.Result
         """
-        print("[run_on_all] TODO: return useful results")
         t0 = time.time()
 
         if self.use_bastion:
             if len(self._worker_ips) >= (MAX_CONNS_PER_GROUP - 1):
-                print("run_on_all_workaround")
-                self._run_on_all_workaround(cmd, MAX_CONNS_PER_GROUP)
-                print(f'Workaround complete. {humanize_float(time.time() - t0)} secs')
-                return
+                results = self._run_on_all_workaround(cmd, MAX_CONNS_PER_GROUP)
+                return list(results)
 
-        self._all_conns.run(cmd)
-        print(f'run_on_all (default) complete. {humanize_float(time.time() - t0)} secs')
-        return
+        results = self._all_conns.run(cmd)
+        return list(results.values())
 
 
     # TODO: Confirm this is required with (10+ nodes)
@@ -139,30 +135,35 @@ class ClusterShell:
                 group_conns = []
             group_conns.append(worker_conn)
 
-
+        flattened_results = []
+        # Either add the master to one of the groups or create a group for it (if groups are all full or no workers)
         if len(group_conns) != 0 and len(group_conns) != group_size:
             group_conns.append(self._master_conn)
             groups.append(ThreadingGroup.from_connections(group_conns))
-            print("Added master to ThreadingGroup")
-            print(f'{len(groups)} groups created @ {MAX_CONNS_PER_GROUP} max per group')
+            # print("Added master to ThreadingGroup")
+            # print(f'{len(groups)} groups created @ {MAX_CONNS_PER_GROUP} max per group')
 
         else:
             if len(group_conns) != 0:
                 groups.append(ThreadingGroup.from_connections(group_conns))
-            print(f'Running master seperately.')
-            print(f'{len(groups)+1} "groups" (serial executions) created @ {MAX_CONNS_PER_GROUP} max per group')
+            # print(f'Running master seperately.')
+            # print(f'{len(groups)+1} "groups" (serial executions) created @ {MAX_CONNS_PER_GROUP} max per group')
             t0 = time.time()
-            print("Running master")
-            self.run_on_master(cmd)
+            # print("Running master")
+            master_result = self.run_on_master(cmd)
             dt = time.time() - t0
-            print(f'Ran master. Took {humanize_float(dt)} secs')
+            # print(f'Ran master. Took {humanize_float(dt)} secs')
+            flattened_results.append(master_result)
 
         for i, worker_conn_group in enumerate(groups):
             t0 = time.time()
-            print(f'Starting group {i + 1} of {len(groups)}')
-            worker_conn_group.run(cmd)
+            # print(f'Starting group {i + 1} of {len(groups)}')
+            group_results = worker_conn_group.run(cmd)
             dt = time.time() - t0
-            print(f'Finished group {i+1} of {len(groups)}. Took {humanize_float(dt)} secs.')
+            # print(f'Finished group {i+1} of {len(groups)}. Took {humanize_float(dt)} secs.')
+            flattened_results.extend(group_results.values())
+
+        return flattened_results
 
 
     def copy_from_master_to_local(self, remote_abs_path, local_abs_path):
