@@ -158,7 +158,7 @@ class ClusterShell:
                             hide=True will prevent run output from being output locally
 
         Returns:
-             # Dict of {Connection: Result} # http://docs.pyinvoke.org/en/latest/api/runners.html#invoke.runners.Result
+            List of invoke.Result objects. Order is not guaranteed. http://docs.pyinvoke.org/en/latest/api/runners.html#invoke.runners.Result
         """
 
         if self.use_bastion:

@@ -1,12 +1,12 @@
 # Naming
-cluster_template_name: "ec2-cluster-pypi-test"
+cluster_template_name: "ec2-cluster-test"
 cluster_id: 1
 
 # Launch Location
 region: "us-west-2"
 
 vpc_id : "vpc-09fe736b3807bbecf"
-subnet_id: "subnet-016dd4822d0e200b1" # Must match AZ
+subnet_id: "subnet-016dd4822d0e200b1"
 
 
 # AMI
