@@ -1,10 +1,21 @@
 # ec2-cluster
 
-Simple library and CLI to manage and work with clusters of EC2 instances. Multi-purpose, but created to make distributed deep learning infrastructure easier. 
+Simple library and CLI to work with clusters of EC2 instances. Multi-purpose, but created to make deep learning distributed training infrastructure easier. 
 
-`ec2-cluster` is designed for simple distributed tasks where Kubernetes is overkill or where fast cluster spin up/down is crucial. Example use cases are running distributed deep learning on an expensive cluster or running distributed load testing from many EC2 instances.
+`ec2-cluster` is designed for simple distributed tasks where Kubernetes is overkill or where fast cluster spin up/down is crucial. It provides the ability to launch a cluster, to retrieve IP addresses for all nodes in the cluster, to delete the cluster and to execute commands on some or all of the instances. 
 
-### Goals
+Other benefits:
+- Resilient to EC2 capacity limits. If instances are not available, `ec2-cluster` will retry until the all nodes in the cluster are created or until the user-set timeout is reached.
+- Easy to quickly launch duplicate clusters for parallel training runs.
+- Can write orchestration logic that needs to be run when launching a cluster, e.g. enabling passwordless ssh between all instances for Horovod-based training
+
+## Examples
+
+### Library
+
+### CLI
+
+## Goals
 
 - Provide the minimal set of features to run distributed deep learning training jobs on EC2 instances.
 - Provide libraries, not a framework or platform.

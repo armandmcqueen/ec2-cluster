@@ -4,7 +4,9 @@ params:
     param_type: str
     param_desc: >
       The name of this cluster template. The cluster name will be
-      the template name plus the number of nodes and the cluster id
+      ${CLUSTER_TEMPLATE_NAME}-${NODE_COUNT}node-cluster${CLUSTER_ID}.
+      Often includes instance type, region/az, description of AMI. Should
+      not include number of nodes, e.g. p3.16xl-us-east-1f-DLAMI-20.0
 
   - param_name: cluster_id
     param_type: int
@@ -15,17 +17,13 @@ params:
     param_type: str
     param_desc: The region that the VPC is in
 
-  - param_name: az
-    param_type: str
-    param_desc: The az that the subnet is in
-
   - param_name: vpc_id
     param_type: str
     param_desc: The id of the vpc. e.g. 'vpc-09fe736b3807bbecf'
 
   - param_name: subnet_id
     param_type: str
-    param_desc: The id of the subnet. e.g. 'subnet-016dd4822d0e200b1'
+    param_desc: The id of the subnet. e.g. 'subnet-016dd4822d0e200b1'.
 
   - param_name: ami_id
     param_type: str
@@ -91,9 +89,10 @@ params:
       Defines how long the cluster waits when there is insufficient EC2 capacity.
       The cluster will timeout if this many seconds go by without increasing the
       size of the cluster. It is NOT the max amount of time the command will run
-      before failing. Here, the counter resets everytime the cluster acquires a
-      new node. Theoretically the max time the command can run before failing is
-      num_nodes*cluster_create_timeout_secs
+      before failing. Here, the counter resets every time the cluster acquires a
+      new node. Theoretically the max time the command can run is
+      num_nodes*cluster_create_timeout_secs. Set as None to have no timeout. None
+      can be either 'None' as a string or the Python type None.
 
 
   - param_name: additional_tags
