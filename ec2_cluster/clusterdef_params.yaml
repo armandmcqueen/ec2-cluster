@@ -17,10 +17,6 @@ params:
     param_type: str
     param_desc: The region that the VPC is in
 
-  - param_name: az
-    param_type: str
-    param_desc: The az that the subnet is in
-
   - param_name: vpc_id
     param_type: str
     param_desc: The id of the vpc. e.g. 'vpc-09fe736b3807bbecf'

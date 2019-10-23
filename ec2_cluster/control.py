@@ -5,6 +5,8 @@ import subprocess
 import time
 from fabric2 import Connection, ThreadingGroup
 
+from .infra import ConfigCluster, EC2NodeCluster
+
 # NOTE 1: Not certain I actually need this, but was a proposed fix for 'error reading SSH banner' and I haven't seen
 #         that error since. https://github.com/paramiko/paramiko/issues/673#issuecomment-436815430
 
@@ -32,8 +34,8 @@ class ClusterShell:
                        running is outside of the VPC and the private IP if running from another EC2 node in the same
                        VPC. In many cases, the distinction between master and workers is arbitrary. If use_bastion is
                        True, the master node will be the bastion host.
-            worker_ips: A possibly empty list of ips for the worker nodes. If there is a single worker, a string IP can
-                        be passed in.
+            worker_ips: A possibly empty list of ips for the worker nodes. If there is only a single worker, a string
+                        can be passed in instead of a list.
             ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem
             use_bastion (bool): Whether or not to use the master node as the bastion host for SSHing to worker nodes.
         """
@@ -74,6 +76,49 @@ class ClusterShell:
         self._individual_worker_conns = worker_conns
         self._worker_conns = ThreadingGroup.from_connections(worker_conns)
         self._all_conns = ThreadingGroup.from_connections([self._master_conn] + worker_conns)
+    
+    @classmethod
+    def from_ec2_cluster(cls, cluster, ssh_key_path, username=None, use_bastion=False, use_public_ips=True):
+        """
+        Create a ClusterShell directly from a ConfigCluster or EC2Cluster.
+
+        :param cluster: A ConfigCluster or an EC2Cluster to create a ClusterShell for
+        :param ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem
+        :param username: [Only used if cluster is an EC2Cluster] The username for the AMI used in the cluster. Usually
+                         "ec2-user" or "ubuntu".
+        :param use_bastion: Whether or not to use the master node as the bastion host for SSHing to worker nodes.
+        :param use_public_ips: Whether to build the ClusterShell from the instances public IPs or private IPs.
+                               Typically this should be True when running code on a laptop/local machine and False
+                               when running on an EC2 instance
+        :return: ClusterShell
+        """
+
+        if isinstance(cluster, ConfigCluster):
+            if username is not None:
+                assert username == cluster.config.username, \
+                    f"When using ConfigCluster, the username is extracted from the config yaml. The username " \
+                    f"parameter of this function should not be set (but it will be accepted as long as it " \
+                    f"matches the config yaml). You passed in the username {username}, while the ConfigCluster " \
+                    f"was created with the username {cluster.config.username}."
+
+            ec2node_cluster = cluster.cluster
+            username = cluster.config.username
+        elif isinstance(cluster, EC2NodeCluster):
+            assert username is not None, "When using EC2NodeCluster, the username must be passed in to this function."
+            ec2node_cluster = cluster
+        else:
+            raise TypeError(f"Only ConfigCluster and EC2NodeCluster are support by this method. You passed in a: "
+                            f"{type(cluster)}")
+
+        ips = ec2node_cluster.public_ips if use_public_ips else ec2node_cluster.private_ips
+
+
+        return cls(username=username,
+                   master_ip=ips[0],
+                   worker_ips=ips[1:],
+                   ssh_key_path=ssh_key_path,
+                   use_bastion=use_bastion)
+        
 
     def run_local(self, cmd):
         """Run a shell command on the local machine.
@@ -102,28 +147,31 @@ class ClusterShell:
         return self._master_conn.run(cmd, **kwargs)
 
 
-    def run_on_all(self, cmd):
+    def run_on_all(self, cmd, **run_kwargs):
         """Run a shell command on every node.
 
         Args:
             cmd: The shell command to run
+            run_kwargs: Keyword args to pass to fabric.run(). Fabric passes them through to Invoke, which are
+                        documented here: http://docs.pyinvoke.org/en/latest/api/runners.html#invoke.runners.Runner.run.
+                        Potentially useful args:
+                            hide=True will prevent run output from being output locally
 
         Returns:
              # Dict of {Connection: Result} # http://docs.pyinvoke.org/en/latest/api/runners.html#invoke.runners.Result
         """
-        t0 = time.time()
 
         if self.use_bastion:
             if len(self._worker_ips) >= (MAX_CONNS_PER_GROUP - 1):
-                results = self._run_on_all_workaround(cmd, MAX_CONNS_PER_GROUP)
+                results = self._run_on_all_workaround(cmd, MAX_CONNS_PER_GROUP, **run_kwargs)
                 return list(results)
 
-        results = self._all_conns.run(cmd)
+        results = self._all_conns.run(cmd, **run_kwargs)
         return list(results.values())
 
 
     # TODO: Confirm this is required with (10+ nodes)
-    def _run_on_all_workaround(self, cmd, group_size):
+    def _run_on_all_workaround(self, cmd, group_size, **run_kwargs):
         total_conns = len(self._worker_conns) + 1
         print(f'{total_conns} Nodes')
         groups = []
@@ -140,27 +188,15 @@ class ClusterShell:
         if len(group_conns) != 0 and len(group_conns) != group_size:
             group_conns.append(self._master_conn)
             groups.append(ThreadingGroup.from_connections(group_conns))
-            # print("Added master to ThreadingGroup")
-            # print(f'{len(groups)} groups created @ {MAX_CONNS_PER_GROUP} max per group')
 
         else:
             if len(group_conns) != 0:
                 groups.append(ThreadingGroup.from_connections(group_conns))
-            # print(f'Running master seperately.')
-            # print(f'{len(groups)+1} "groups" (serial executions) created @ {MAX_CONNS_PER_GROUP} max per group')
-            t0 = time.time()
-            # print("Running master")
-            master_result = self.run_on_master(cmd)
-            dt = time.time() - t0
-            # print(f'Ran master. Took {humanize_float(dt)} secs')
+            master_result = self.run_on_master(cmd, **run_kwargs)
             flattened_results.append(master_result)
 
         for i, worker_conn_group in enumerate(groups):
-            t0 = time.time()
-            # print(f'Starting group {i + 1} of {len(groups)}')
-            group_results = worker_conn_group.run(cmd)
-            dt = time.time() - t0
-            # print(f'Finished group {i+1} of {len(groups)}. Took {humanize_float(dt)} secs.')
+            group_results = worker_conn_group.run(cmd, **run_kwargs)
             flattened_results.extend(group_results.values())
 
         return flattened_results

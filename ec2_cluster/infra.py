@@ -1,8 +1,9 @@
 import boto3
 import json
-import yaml
 import os
+from pathlib import Path
 import time
+import yaml
 
 def humanize_float(num):
     return "{0:,.2f}".format(num)
@@ -867,9 +868,11 @@ class EC2NodeCluster:
             vlog("Waiting for all nodes to reach terminated state")
             self.wait_for_all_nodes_to_be_terminated()
 
-        if self.security_group_exists(self.cluster_sg_id):
+        if self.security_group_exists(self.cluster_sg_name):
             self.delete_cluster_sg()
             vlog("Cluster SG deleted")
+        else:
+            vlog(f"Cluster SG ({self.cluster_sg_name}) does not exist")
 
         if self.placement_group_exists():
             self.delete_placement_group()
@@ -891,26 +894,26 @@ class ConfigCluster:
     `self.cluster`.
 
     Args:
-        config_yaml_abspath: Path to a yaml configuration file. None to load all params from `other_args`.
+        config_yaml_path: Path to a yaml configuration file. None to load all params from `other_args`.
         other_args: Dictionary containing additional configuration values which will overwrite values from the
                     config file
     """
-    def __init__(self, config_yaml_abspath=None, other_args=None):
+    def __init__(self, config_yaml_path=None, other_args=None):
         if other_args is None:
             other_args = {}
 
 
         # Pull in list of params
-        param_list_yaml_abspath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clusterdef_params.yaml")
-        with open(param_list_yaml_abspath, 'r') as f:
+        param_list_yaml_path = Path(__file__).parent/"clusterdef_params.yaml"
+        with open(param_list_yaml_path, 'r') as f:
             self.paramdef_list = yaml.safe_load(f)["params"]
 
 
         # Use yaml arguments as base if yaml file path was input
-        if config_yaml_abspath is None:
+        if config_yaml_path is None:
             config_dict = {}
         else:
-            with open(config_yaml_abspath, 'r') as yml:
+            with open(Path(config_yaml_path).absolute(), 'r') as yml:
                 config_dict = yaml.safe_load(yml)
 
 
@@ -918,6 +921,11 @@ class ConfigCluster:
         for param_name, param_val in other_args.items():
             config_dict[param_name] = param_val
 
+        # Find the AZ from the subnet
+        ec2_client = boto3.session.Session(region_name=config_dict["region"]).client("ec2")
+        subnets = ec2_client.describe_subnets(SubnetIds=[config_dict["subnet_id"]])["Subnets"]
+        assert len(subnets) == 1, "There should only be one or zero subnets with that id"
+        config_dict["az"] = subnets[0]["AvailabilityZone"]
 
         # Validate then convert to AttrDict for dot notation member access
         self.validate_config_dict(config_dict)
@@ -977,6 +985,7 @@ class ConfigCluster:
         # placement_group special case. Defaults to False
         if "placement_group" not in config_dict.keys() or config_dict["placement_group"] is None:
             config_dict["placement_group"] = False
+
 
 
     @property

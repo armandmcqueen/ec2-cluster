@@ -7,7 +7,6 @@ cluster_id: 1
 
 # Launch Location
 region: "us-west-2"
-az: "us-west-2c"
 
 vpc_id : "vpc-09fe736b3807bbecf"
 subnet_id: "subnet-016dd4822d0e200b1"

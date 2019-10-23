@@ -1,0 +1,34 @@
+# Naming
+cluster_template_name: "ec2-cluster-pypi-test"
+cluster_id: 1
+
+# Launch Location
+region: "us-west-2"
+
+vpc_id : "vpc-09fe736b3807bbecf"
+subnet_id: "subnet-016dd4822d0e200b1" # Must match AZ
+
+
+# AMI
+ami_id: "ami-05931d11d2bf831c3" # Deep Learning AMI 24.3, us-west-2 (Late Oct 2019)
+ebs_snapshot_id: "snap-049ce00a5c753775a" # Snapshot for DLAMI 24.3
+username: "ubuntu"
+
+# EBS
+volume_type: "gp2"
+volume_gbs: 100
+
+# Launch Settings
+instance_type: "t3.nano"
+node_count: 2
+
+iam_ec2_role_name: "ec2-cluster-test-role"
+key_name: "ec2-cluster-test"
+security_group_ids:
+  - "sg-08f2dd4548d863796" # armand-ssh
+
+
+
+# EC2Cluster behavior args
+cluster_create_timeout_secs: 600  # Fail after 10 minutes without an increase in the cluster size
+ebs_optimized: No  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSOptimized.html
