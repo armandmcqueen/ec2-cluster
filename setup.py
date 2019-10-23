@@ -22,7 +22,7 @@ setuptools.setup(
             "Programming Language :: Python :: 3.6"
         ],
         install_requires=[
-            'paramiko==2.5.1', # Bug in paramiko 2.6.0 (https://github.com/armandmcqueen/ec2-cluster/issues/10)
+            'paramiko<=2.5.1', # Bug in paramiko 2.6.0 (https://github.com/armandmcqueen/ec2-cluster/issues/10)
             'fabric2>2.3.0',
             'boto3',
             'pyyaml',
