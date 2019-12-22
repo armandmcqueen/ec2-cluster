@@ -3,9 +3,11 @@ import random
 import shlex
 import subprocess
 import time
+import fabric2
 from fabric2 import Connection, ThreadingGroup
 
-from .infra import ConfigCluster, EC2NodeCluster
+from pathlib import Path
+
 
 # NOTE 1: Not certain I actually need this, but was a proposed fix for 'error reading SSH banner' and I haven't seen
 #         that error since. https://github.com/paramiko/paramiko/issues/673#issuecomment-436815430
@@ -26,7 +28,8 @@ class ClusterShell:
     """
 
 
-    def __init__(self, username, master_ip, worker_ips, ssh_key_path, use_bastion=False):
+    def __init__(self, username, master_ip, worker_ips, ssh_key_path, use_bastion=False,
+                 wait_for_ssh=True, wait_for_ssh_timeout=120):
         """
         Args:
             username: The username used to ssh to the instance. Often 'ubuntu' or 'ec2-user'
@@ -38,6 +41,12 @@ class ClusterShell:
                         can be passed in instead of a list.
             ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem
             use_bastion (bool): Whether or not to use the master node as the bastion host for SSHing to worker nodes.
+            wait_for_ssh (bool): If true, block until commands can be run on all instances. This can be useful when you
+                                 are launching EC2 instances, because the instances may be in the RUNNING state but the
+                                 SSH daemon may not yet be running.
+            wait_for_ssh_timeout: Number of seconds to spend trying to run commands on the instances before failing.
+                                  This is NOT the SSH timeout, this upper bounds the amount of time spent retrying
+                                  failed SSH connections. Only used if wait_for_ssh=True.
         """
         if not isinstance(worker_ips, list):
             worker_ips = [worker_ips]
@@ -47,6 +56,7 @@ class ClusterShell:
         self._worker_ips = worker_ips
         self._all_ips = [self._master_ip] + self._worker_ips
         self.use_bastion = use_bastion
+
 
         connect_kwargs = {
             "key_filename": [os.path.expanduser(ssh_key_path)],
@@ -76,49 +86,36 @@ class ClusterShell:
         self._individual_worker_conns = worker_conns
         self._worker_conns = ThreadingGroup.from_connections(worker_conns)
         self._all_conns = ThreadingGroup.from_connections([self._master_conn] + worker_conns)
-    
-    @classmethod
-    def from_ec2_cluster(cls, cluster, ssh_key_path, username=None, use_bastion=False, use_public_ips=True):
-        """
-        Create a ClusterShell directly from a ConfigCluster or EC2Cluster.
 
-        :param cluster: A ConfigCluster or an EC2Cluster to create a ClusterShell for
-        :param ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem
-        :param username: [Only used if cluster is an EC2Cluster] The username for the AMI used in the cluster. Usually
-                         "ec2-user" or "ubuntu".
-        :param use_bastion: Whether or not to use the master node as the bastion host for SSHing to worker nodes.
-        :param use_public_ips: Whether to build the ClusterShell from the instances public IPs or private IPs.
-                               Typically this should be True when running code on a laptop/local machine and False
-                               when running on an EC2 instance
-        :return: ClusterShell
-        """
+        if wait_for_ssh:
+            self.wait_for_ssh_ready(wait_timeout=wait_for_ssh_timeout)
 
-        if isinstance(cluster, ConfigCluster):
-            if username is not None:
-                assert username == cluster.config.username, \
-                    f"When using ConfigCluster, the username is extracted from the config yaml. The username " \
-                    f"parameter of this function should not be set (but it will be accepted as long as it " \
-                    f"matches the config yaml). You passed in the username {username}, while the ConfigCluster " \
-                    f"was created with the username {cluster.config.username}."
+    def wait_for_ssh_ready(self, wait_timeout=120):
+        """Repeatedly try to run commands on all instances until successful or until timeout is reached."""
 
-            ec2node_cluster = cluster.cluster
-            username = cluster.config.username
-        elif isinstance(cluster, EC2NodeCluster):
-            assert username is not None, "When using EC2NodeCluster, the username must be passed in to this function."
-            ec2node_cluster = cluster
-        else:
-            raise TypeError(f"Only ConfigCluster and EC2NodeCluster are support by this method. You passed in a: "
-                            f"{type(cluster)}")
+        start_time = time.time()
+        exceptions = []
+        while True:
 
-        ips = ec2node_cluster.public_ips if use_public_ips else ec2node_cluster.private_ips
+            try:
+                self.run_on_all("hostname", hide=True)
+                break
+            except fabric2.exceptions.GroupException as e:
+                exceptions.append(e)
 
+                elapsed_time = time.time() - start_time
+                if elapsed_time > wait_timeout:
+                    exceptions_str = "\n".join([str(e) for e in exceptions])
+                    raise RuntimeError(
+                            f"[ClusterShell.wait_for_ssh_ready] Unable to establish an SSH connection after "
+                            f"{wait_timeout} seconds. On EC2 this is often due to a problem with the security group, "
+                            f"although there are many potential causes."
+                            f"\nExceptions encountered:\n{exceptions_str}")
 
-        return cls(username=username,
-                   master_ip=ips[0],
-                   worker_ips=ips[1:],
-                   ssh_key_path=ssh_key_path,
-                   use_bastion=use_bastion)
-        
+                secs_to_timeout = int(wait_timeout - elapsed_time)
+                print(f"ClusterShell.wait_for_ssh_ready] Exception when SSHing to instances. Retrying until timeout in "
+                      f"{secs_to_timeout} seconds")
+                time.sleep(1)
 
     def run_local(self, cmd):
         """Run a shell command on the local machine.
@@ -202,19 +199,19 @@ class ClusterShell:
         return flattened_results
 
 
-    def copy_from_master_to_local(self, remote_abs_path, local_abs_path):
+    def copy_from_master_to_local(self, remote_path, local_path):
         """Copy a file from the master node to the local node.
 
         Args:
-            remote_abs_path: The absolute path of the file on the master node
-            local_abs_path: The absolute path to save the file to on the local file system.
+            remote_path: The path of the file on the master node. If not an absolute path, will be relative to the
+                         working directory, typically the home directory. Will not expand tilde (~).
+            local_path: The path to save the file to on the local file system.
         """
-        return self._master_conn.get(remote_abs_path, local_abs_path)
+        local_abs_path = Path(local_path).absolute()
+        return self._master_conn.get(remote_path, local_abs_path)
 
 
-    # TODO: Clean this code up
-    # local_abs_path must be a directory
-    def copy_from_all_to_local(self, remote_abs_path, local_abs_path):
+    def copy_from_all_to_local(self, remote_abs_path, local_path):
         """Copy files from all nodes to the local filesystem.
 
         There will be one directory per node containing the file.
@@ -222,53 +219,81 @@ class ClusterShell:
         Args:
             remote_abs_path: The absolute path of the file to download. Can be a directory or a cp/scp string including
                              wildcards
-            local_abs_path: The absolute path of a directory on the local filesystem to download the files into. The
-                            directory must already exist.
+            local_path: The absolute path of a directory on the local filesystem to download the files into. The path
+                        must not point to a file.
         """
-        if not os.path.isdir(local_abs_path):
-            raise RuntimeError(f'[ClusterShell.copy_from_all_to_local] local_abs_path must be a dir: {local_abs_path}')
+        if self.use_bastion:
+            raise NotImplementedError("Copying has not yet been implemented for bastion mode. Please open a ticket at "
+                                      "https://github.com/armandmcqueen/ec2-cluster if you would like to see this "
+                                      "feature implemented")
+        local_abs_path = Path(local_path).absolute()
 
-        tmp_path = f'/tmp/{random.randint(0, 1_000_000)}'
-        self.run_on_master(f'rm -rf {tmp_path}')
-        self.run_on_master(f'mkdir -p {tmp_path}') # create a staging folder in /tmp on master node
+        if not local_abs_path.exists():
+            local_abs_path.mkdir(parents=True)
+        else:
+            if local_abs_path.is_file():
+                raise RuntimeError(f'[ClusterShell.copy_from_all_to_local] local_path points to a file: '
+                                   f'{local_abs_path}')
 
-        # Create and populate staging folder for master data
-        master_node_tmp_path = f'{tmp_path}/0' # Rank 0 is master
-        self.run_on_master(f'mkdir -p {master_node_tmp_path}')
-        self.run_on_master(f'echo {self.master_ip()} > {master_node_tmp_path}/ip.txt') # Save ip of master node
-        self.run_on_master(f'cp -r {remote_abs_path} {master_node_tmp_path}/') # Copy master's data to staging folder
+        master_dir = local_abs_path / "0"
+        master_dir.mkdir()
+        master_ip_path = master_dir / "ip.txt"
+
+        with open(master_ip_path, 'w') as f:
+            f.write(self.master_ip)
+
+        self.run_local(f'scp '
+                       f'-o StrictHostKeyChecking=no '
+                       f'-o "UserKnownHostsFile /dev/null" '
+                       f'-o "LogLevel QUIET" '
+                       f'-r '
+                       f'{self._username}@{self.master_ip}:{remote_abs_path} {master_dir}/')
 
         # Create and populate staging folder for each worker's data
         for ind, worker_ip in enumerate(self._worker_ips):
             worker_id = ind + 1
-            worker_node_tmp_path = f'{tmp_path}/{worker_id}'
-            self.run_on_master(f'mkdir -p {worker_node_tmp_path}')
-            self.run_on_master(f'echo {worker_ip} > {worker_node_tmp_path}/ip.txt')  # Save ip of worker
-            self.run_on_master(f'scp -r {self._username}@{worker_ip}:{remote_abs_path} {worker_node_tmp_path}/')
+            worker_node_dir = local_abs_path / str(worker_id)
+            worker_node_dir.mkdir()
+            worker_ip_path = worker_node_dir / "ip.txt"
+            with open(worker_ip_path, 'w') as f:
+                f.write(worker_ip)
+            self.run_local(f'scp '
+                           f'-o StrictHostKeyChecking=no '
+                           f'-o "UserKnownHostsFile /dev/null" '
+                           f'-o "LogLevel QUIET" '
+                           f'-r '
+                           f'{self._username}@{worker_ip}:{remote_abs_path} {worker_node_dir}/')
 
-        self.copy_from_master_to_local(f'{tmp_path}/*', local_abs_path)
-        self.run_on_master(f'rm -r {tmp_path}') # Clean up staging folder
 
 
-    def copy_from_local_to_master(self, local_abs_path, remote_abs_path):
+    def copy_from_local_to_master(self, local_path, remote_path):
         """Copy a file from the local filesystem to the master node.
 
         Args:
-            local_abs_path: The absolute path of the file to send to the master node
-            remote_abs_path: The absolute path where the file will be saved on the master node
+            local_path: The path of the file to send to the master node
+            remote_path: The path where the file will be saved on the master node. Does not expand tilde (~), but if not
+                         an absolute path, will usually interpret the path as relative to the home directory.
         """
-        return self._master_conn.put(local_abs_path, remote_abs_path)
+        local_abs_path = Path(local_path).absolute()
+        return self._master_conn.put(local_abs_path, remote_path)
 
-    def copy_from_local_to_all(self, local_abs_path, remote_abs_path):
+    def copy_from_local_to_all(self, local_path, remote_path):
         """Copy a file from the local filesystem to every node in the cluster.
 
         Args:
-            local_abs_path: The absolute path of the file to send to the master and worker nodes
-            remote_abs_path: The absolute path where the file will be saved on the master and worker nodes
+            local_path: The path of the file to send to the master and worker nodes
+            remote_path: The path where the file will be saved on the master and worker nodes. Does not expand tilde (~),
+                         but if not an absolute path, will usually interpret the path as relative to the home directory.
         """
-        self.copy_from_local_to_master(local_abs_path, remote_abs_path)
+        if self.use_bastion:
+            raise NotImplementedError("Copying has not yet been implemented for bastion mode. Please open a ticket at "
+                                      "https://github.com/armandmcqueen/ec2-cluster if you would like to see this "
+                                      "feature implemented")
+
+        local_abs_path = Path(local_path).absolute()
+        self.copy_from_local_to_master(local_abs_path, remote_path)
         for worker_conn in self._individual_worker_conns:
-            worker_conn.put(local_abs_path, remote_abs_path)
+            worker_conn.put(local_abs_path, remote_path)
 
     @property
     def username(self):
