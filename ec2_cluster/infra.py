@@ -5,6 +5,8 @@ from pathlib import Path
 import time
 import yaml
 
+from .control import ClusterShell
+
 def humanize_float(num):
     return "{0:,.2f}".format(num)
 
@@ -587,10 +589,6 @@ class EC2NodeCluster:
 
         :param vpc_id: The Id of the VPC that the cluster is in.
         """
-        vlog = self._get_vlog(verbose, 'EC2NodeCluster.create_cluster_sg')
-        if self.security_group_exists(self.cluster_sg_name):
-            vlog("Cluster SG already exists. No need to recreate")
-            return
 
         response = self.ec2_client.create_security_group(
             Description=self.cluster_sg_name,
@@ -770,8 +768,13 @@ class EC2NodeCluster:
         if self.any_node_is_running_or_pending():
             raise RuntimeError("Nodes with names matching this cluster already exist!")
 
-        vlog("Creating cluster SG if needed")
-        self.create_cluster_sg(vpc_id, verbose=verbose)
+
+        if self.security_group_exists(self.cluster_sg_name):
+            vlog("Cluster security group already exists. No need to recreate")
+        else:
+            vlog("Creating cluster security group")
+            self.create_cluster_sg(vpc_id, verbose=verbose)
+
         security_group_ids.append(self.cluster_sg_id)
 
         if use_placement_group:
@@ -783,8 +786,6 @@ class EC2NodeCluster:
         start = time.time()
         for launch_ind, ec2_node in enumerate(self.nodes):
             while True:
-
-                vlog("-----")
                 try:
 
                     ec2_node.launch(az,
@@ -815,7 +816,6 @@ class EC2NodeCluster:
                         vlog(f'Timed out trying to launch node #{launch_ind+1}. Max timeout of {timeout_secs} seconds reached')
                         vlog("Now trying to clean up partially launched cluster")
                         for terminate_ind, ec2_node_to_delete in enumerate(self.nodes):
-                            vlog("-----")
                             try:
                                 if terminate_ind >= launch_ind:
                                     break   # Don't try to shut down nodes that weren't launched.
@@ -842,17 +842,20 @@ class EC2NodeCluster:
                             vlog(f'Will time out after {timeout_secs} seconds. Current elapsed time: {humanize_float(time.time() - start)} seconds')
                         time.sleep(wait_secs)
 
-        vlog("-----")
         vlog("Now waiting for all nodes to reach RUNNING state")
         self.wait_for_all_nodes_to_be_running()
         vlog("All nodes are running!")
 
 
-    def terminate(self, verbose=False):
+    def terminate(self, verbose=False, fast_terminate=False):
         """Terminate all nodes in the cluster and clean up security group and placement group
 
         Args:
             verbose: True to print out detailed information about progress.
+            fast_terminate: If True, will not wait for the nodes to be shut down, instead returning as soon as the node
+                            termination has been triggered. NOTE: If this mode is chosen and the nodes were launched
+                            into a placement group, the placement group will not be deleted (a placement group is a
+                            logical EC2 resource that has no cost associated with it)
         """
         vlog = self._get_vlog(verbose, 'EC2NodeCluster.terminate')
 
@@ -860,19 +863,22 @@ class EC2NodeCluster:
             vlog("No nodes exist to terminate")
         else:
             for i, ec2_node in enumerate(self.nodes):
-                vlog("-----")
                 ec2_node.detach_security_group(self.cluster_sg_id)
                 ec2_node.terminate()
                 vlog(f'Node {i + 1} of {self.node_count} successfully triggered deletion')
-            vlog("-----")
-            vlog("Waiting for all nodes to reach terminated state")
-            self.wait_for_all_nodes_to_be_terminated()
 
         if self.security_group_exists(self.cluster_sg_name):
             self.delete_cluster_sg()
             vlog("Cluster SG deleted")
         else:
             vlog(f"Cluster SG ({self.cluster_sg_name}) does not exist")
+
+        if fast_terminate:
+            return
+
+        vlog("Waiting for all nodes to reach terminated state")
+        self.wait_for_all_nodes_to_be_terminated()
+
 
         if self.placement_group_exists():
             self.delete_placement_group()
@@ -941,6 +947,21 @@ class ConfigCluster:
                                       cluster_name=self.cluster_name,
                                       region=self.config.region)
 
+
+    def __enter__(self):
+        """Creates a fresh cluster which will be automatically cleaned up.
+
+        Will raise exception if the cluster already exists.
+        """
+        if self.any_node_is_running_or_pending():
+            raise RuntimeError(f"Cluster with name '{self.cluster_name}' already exists.")
+
+        self.launch(verbose=True)
+        return self
+
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.terminate(verbose=True, fast_terminate=True)
 
     @property
     def config(self):
@@ -1072,13 +1093,17 @@ class ConfigCluster:
                             verbose=verbose)
 
 
-    def terminate(self, verbose=False):
+    def terminate(self, verbose=False, fast_terminate=False):
         """Terminate all nodes in the cluster and clean up security group and placement group
 
         Args:
             verbose: True to print out detailed information about progress.
+            fast_terminate: If True, will not wait for the nodes to reach the TERMINATED state, instead returning as
+                            soon as the node termination has been triggered. NOTE: If this mode is chosen and the nodes
+                            were launched into a placement group, the placement group will not be deleted (a placement
+                            group is a logical EC2 resource that has no cost associated with it)
         """
-        self.cluster.terminate(verbose=verbose)
+        self.cluster.terminate(verbose=verbose, fast_terminate=fast_terminate)
 
     @property
     def ips(self):
@@ -1106,3 +1131,36 @@ class ConfigCluster:
         }
 
 
+    def get_shell(self, ssh_key_path=None, use_bastion=False, use_public_ips=True,
+                  wait_for_ssh=True, wait_for_ssh_timeout=120):
+        """
+        Create a ClusterShell from a ConfigCluster.
+
+        :param ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem.
+                             If param is None, will assume that the key is available at ~/.ssh/${KEY_PAIR_NAME}.pem
+        :param use_bastion: Whether or not to use the master node as the bastion host for SSHing to worker nodes.
+        :param use_public_ips: Whether to build the ClusterShell from the instances public IPs or private IPs.
+                               Typically this should be True when running code on a laptop/local machine and False
+                               when running on an EC2 instance
+        :param wait_for_ssh: If true, block until commands can be run on all instances. This can be useful when
+                             you are launching EC2 instances, because the instances may be in the RUNNING state
+                             but the SSH daemon may not yet be running.
+        :param wait_for_ssh_timeout: Number of seconds to spend trying to run commands on the instances before failing.
+                                     This is NOT the SSH timeout, this upper bounds the amount of time spent retrying
+                                     failed SSH connections. Only used if wait_for_ssh=True.
+        :return: ClusterShell
+        """
+
+        ips = self.public_ips if use_public_ips else self.private_ips
+
+        if ssh_key_path is None:
+            ssh_key_path = Path(f"~/.ssh/{self.config.key_name}.pem").expanduser()
+
+        sh = ClusterShell(username=self.config.username,
+                          master_ip=ips[0],
+                          worker_ips=ips[1:],
+                          ssh_key_path=ssh_key_path,
+                          use_bastion=use_bastion,
+                          wait_for_ssh=wait_for_ssh,
+                          wait_for_ssh_timeout=wait_for_ssh_timeout)
+        return sh

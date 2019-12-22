@@ -1,24 +1,74 @@
 # ec2-cluster
 
 
+
 Simple CLI and Python library to spin up and run shell commands on clusters of EC2 instances using [`boto3`](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) and [`fabric`](https://github.com/fabric/fabric). Multi-purpose, but created to make deep learning distributed training infrastructure easier. Also very useful for running performance tests across multiple EC2 instance types.
 
-```
+## Quickstart
+
+This code will launch a cluster of EC2 instances, run the command `hostname` on all of them, return the results of the command and then tear down the cluster.
+
+```python
 import ec2_cluster as ec3
 
-cluster = ec3.ConfigCluster("cluster.yaml")
-cluster.launch()
-
-sh = ec3.ClusterShell.from_ec2_cluster(cluster, ssh_key_path="~/.ssh/ec2-cluster-test.pem")
-results = sh.run_on_all("hostname")
-
-hostnames = [result.stdout for result in results]
+with ec3.infra.ConfigCluster("cluster.yaml") as cluster:
+    sh = cluster.get_shell()
+    results = sh.run_on_all("hostname")
+    hostnames = [result.stdout for result in results]
 ```
+
+## Long-running tasks
+
+`ec2-cluster` is also designed for long-running tasks where you may not want to keep your local machine awake for the full duration. The library relies on EC2 tags to keep track of EC2 instances, letting you interact with a cluster across sessions without needing an always-on control plane.
+
+Below is one way to launch complicated, long-running jobs and download the results at some later time. `check_on_job()` can be run in a different session or even a different machine than `launch_job()` as long as they have the same `cluster.yaml` and are using the same AWS account.
+
+```python
+import ec2_cluster as ec3
+
+def launch_job():
+    cluster = ec3.infra.ConfigCluster("cluster.yaml")
+    cluster.launch(verbose=True)
+    sh = cluster.get_shell()
+    sh.copy_from_local_to_all("job_script.py", "job_script.py")
+    sh.run_on_all("python job_script.py > job.log 2>&1 &")  # Launch script as background process
+
+
+def check_on_job():
+    cluster = ec3.infra.ConfigCluster("cluster.yaml")
+    sh = cluster.get_shell()
+    statuses = sh.run_on_all("tail -n 1 job.log", hide=True)
+    for status in statuses:
+        if status.stdout.rstrip("\n") != "job_script.py complete":
+            print("Job is not yet complete on all instances")
+            return
+    
+    print("Job is finally done on all instances!")
+     
+    sh.copy_from_all_to_local("job.log", "./results/")
+    cluster.terminate(verbose=True)
+```
+This will create a directory on your local machine:
+```
+results/
+├── 0
+│   ├── ip.txt
+│   └── job.log
+├── 1
+│   ├── ip.txt
+│   └── job.log
+└── 3
+    ├── ip.txt
+    └── job.log
+```
+
+
+
 
 ## Overview
 
 
-`ec2-cluster` is designed for simple distributed tasks where Kubernetes is overkill. There is no setup required other than the ability to launch EC2 instances with `boto3` and the ability to SSH to those instances (if you want to run commands on them). 
+`ec2-cluster` is designed for simple distributed tasks where Kubernetes is overkill. There is no setup required other than the ability to launch EC2 instances with `boto3` and the ability to SSH to those instances (only a requirement if you want to run commands on them). 
 
 `ec2-cluster` provides the ability to launch a cluster, to retrieve IP addresses for all nodes/nodes in the cluster, to delete the cluster and to execute commands on some or all of the instances. 
 
