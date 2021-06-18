@@ -6,7 +6,7 @@ Simple CLI and Python library to spin up and run shell commands on clusters of E
 
 ## Quickstart
 
-This code will launch a cluster of EC2 instances, run the command `hostname` on all of them, return the results of the command and then tear down the cluster.
+This code will launch a cluster of EC2 instances, run the command `hostname` on all of them, return the results of the command, and then tear down the cluster.
 
 ```python
 import ec2_cluster as ec3
@@ -15,6 +15,8 @@ with ec3.infra.ConfigCluster("cluster.yaml") as cluster:
     sh = cluster.get_shell()
     results = sh.run_on_all("hostname")
     hostnames = [result.stdout for result in results]
+
+# Cluster is torn down when context is exited
 ```
 
 ## Long-running tasks
