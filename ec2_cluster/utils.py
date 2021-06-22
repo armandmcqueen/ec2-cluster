@@ -2,6 +2,8 @@ import yaml
 import boto3
 import os
 
+def humanize_float(num):
+    return "{0:,.2f}".format(num)
 
 def get_dlamis(region, ami_type="Ubuntu"):
 

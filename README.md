@@ -11,13 +11,14 @@ This code will launch a cluster of EC2 instances, run the command `hostname` on 
 ```python
 import ec2_cluster as ec3
 
-with ec3.infra.ConfigCluster("cluster.yaml") as cluster:
-    sh = cluster.get_shell()
-    results = sh.run_on_all("hostname")
+with ec3.Cluster("cluster.yaml") as cluster:
+    results = cluster.run("hostname")
     hostnames = [result.stdout for result in results]
 
 # Cluster is torn down when context is exited
 ```
+
+The `cluster.yaml` 
 
 ## Long-running tasks
 
