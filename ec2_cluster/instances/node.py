@@ -409,7 +409,6 @@ class EC2Node:
             SecurityGroupIds=self.security_group_ids,
             SubnetId=self.subnet,
             DryRun=dry_run,
-            EbsOptimized=self.ebs_optimized,
             IamInstanceProfile=iam_instance_profile,
             TagSpecifications=[
                 {
@@ -682,22 +681,39 @@ def get_default_ami(region: str, architecture: ImageArchitecture):
     return most_recent_image
 
 
+def get_ebs_optimized_map(region: str, instance_type: str):
+    ec2_client = boto3.client('ec2', region_name=region)
+    response = ec2_client.describe_instance_types(
+        # InstanceTypes=[
+        #     instance_type
+        # ]
+    )
+    support_types = set()
+    print(response.keys())
+    for i in response['InstanceTypes']:
+        ebs_optimized_support = i['EbsInfo']['EbsOptimizedSupport']
+        support_types.add(ebs_optimized_support)
+    print(support_types)
 
 def main():
     REGION = "us-east-1"
     DEFAULT_INSTANCE_TYPE = "m5.large"
-    KEYPAIR = "armand-personal-dev-us-east-1"
-    SECURITY_GROUPS = ["sg-0b3ada0862ce7ef94"]
-    IAM_ROLE_NAME = None  # "admin"
+    # KEYPAIR = "armand-personal-dev-us-east-1"
+    # SECURITY_GROUPS = ["sg-0b3ada0862ce7ef94"]
+    # IAM_ROLE_NAME = None  # "admin"
+    #
+    # vpc = get_default_vpc(REGION)
+    # subnets = get_default_subnets(REGION, vpc.vpc_id)
+    #
+    # for subnet in subnets:
+    #     print(subnet.subnet_id, subnet.availability_zone, subnet.availability_zone_id, subnet.default_for_az)
+    #
+    # ami = get_default_ami(region=REGION, architecture=ImageArchitecture.x86_64)
+    # print(ami)
 
-    vpc = get_default_vpc(REGION)
-    subnets = get_default_subnets(REGION, vpc.vpc_id)
 
-    for subnet in subnets:
-        print(subnet.subnet_id, subnet.availability_zone, subnet.availability_zone_id, subnet.default_for_az)
-
-    ami = get_default_ami(region=REGION, architecture=ImageArchitecture.x86_64)
-    print(ami)
+    get_ebs_optimized_map(REGION, DEFAULT_INSTANCE_TYPE)
+    return
 
     node = EC2Node(
         name="armand-test-ec2node",
