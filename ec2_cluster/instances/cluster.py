@@ -6,7 +6,7 @@ from typing import List
 from pathlib import Path
 
 from ec2_cluster.utils import humanize_float
-from ec2_cluster.instances.instance import EC2Node
+from ec2_cluster.instances.node import EC2Node
 from ec2_cluster.config.config import ClusterConfig
 from ec2_cluster.shells.control import ClusterShell
 
@@ -135,129 +135,6 @@ class ConfigCluster:
             config_dict["placement_group"] = False
 
 
-
-    @property
-    def instance_ids(self):
-        """A list of InstanceIds for the nodes in the cluster.
-
-        All nodes must be in RUNNING or PENDING stats. Always in the same order: [Master, Worker1, Worker2, etc...]
-        """
-        return self.cluster.instance_ids
-
-    @property
-    def private_ips(self):
-        """The list of private IPs for the nodes in the cluster.
-
-        All nodes must be in RUNNING or PENDING stats. Output is always in the same order: [Master, Worker1, Worker2, etc...]
-        """
-        return self.cluster.private_ips
-
-    @property
-    def public_ips(self):
-        """A list of public IPs for the nodes in the cluster.
-
-        All nodes must be in RUNNING or PENDING stats. Output is always in the same order: [Master, Worker1, Worker2, etc...]
-        """
-        return self.cluster.public_ips
-
-    @property
-    def cluster_sg_id(self):
-        """Return the Id of the ClusterSecurityGroup
-
-        When cluster is launched, a security group is created to allow the nodes to communicate with each other. This
-        is deleted when the cluster is terminated.
-
-        Raise exception if the ClusterSecurityGroup doesn't exist.
-        """
-        return self.cluster.cluster_sg_id
-
-
-    def any_node_is_running_or_pending(self):
-        """Return True if any node is in RUNNING or PENDING states"""
-        return self.cluster.any_node_is_running_or_pending()
-
-
-    def wait_for_all_nodes_to_be_running(self):
-        """Blocks until all nodes are in the RUNNING state"""
-        return self.cluster.wait_for_all_nodes_to_be_running()
-
-    def wait_for_all_nodes_to_be_status_ok(self):
-        """Blocks until all nodes have passed the EC2 health check.
-
-        Once nodes are status OK, you can SSH to them. See EC2Node.wait_for_instance_to_be_status_ok() for details.
-        """
-        return self.cluster.wait_for_all_nodes_to_be_status_ok()
-
-    def wait_for_all_nodes_to_be_terminated(self):
-        """Blocks until all nodes are in the TERMINATED state"""
-        return self.cluster.wait_for_all_nodes_to_be_terminated()
-
-    def launch(self, verbose=False):
-        """Launch the cluster nodes using the config set in `__init__`
-
-        Will repeatedly try to launch instances until all nodes are launched or the timeout is reached.
-
-        Args:
-             verbose: True to print out detailed information about progress
-        """
-
-        self.cluster.launch(az=self.config.az,
-                            vpc_id=self.config.vpc_id,
-                            subnet_id=self.config.subnet_id,
-                            ami_id=self.config.ami_id,
-                            ebs_snapshot_id=self.config.ebs_snapshot_id,
-                            volume_gbs=self.config.volume_gbs,
-                            volume_type=self.config.volume_type,
-                            key_name=self.config.key_name,
-                            security_group_ids=self.config.security_group_ids,
-                            iam_ec2_role_name=self.config.iam_ec2_role_name,
-                            instance_type=self.config.instance_type,
-                            use_placement_group=self.config.placement_group,
-                            iops=self.config.iops,
-                            ebs_optimized=self.config.ebs_optimized,
-                            tags=self.config.additional_tags,
-                            timeout_secs=self.config.cluster_create_timeout_secs,
-                            verbose=verbose)
-
-
-    def terminate(self, verbose=False, fast_terminate=False):
-        """Terminate all nodes in the cluster and clean up security group and placement group
-
-        Args:
-            verbose: True to print out detailed information about progress.
-            fast_terminate: If True, will not wait for the nodes to reach the TERMINATED state, instead returning as
-                            soon as the node termination has been triggered. NOTE: If this mode is chosen and the nodes
-                            were launched into a placement group, the placement group will not be deleted (a placement
-                            group is a logical EC2 resource that has no cost associated with it)
-        """
-        self.cluster.terminate(verbose=verbose, fast_terminate=fast_terminate)
-
-    @property
-    def ips(self):
-        """Get all public and private IPs for nodes in the cluster
-
-        All nodes must be in RUNNING or PENDING stats.
-
-        Returns:
-        ::
-            {
-                "master_public_ip": MasterPublicIp,
-                "worker_public_ips": [Worker1PublicIp, Worker2PublicIp, etc...]
-                "master_private_ip": MasterPrivateIp,
-                "worker_private_ips": [Worker1PrivateIp, Worker2PrivateIp, etc...]
-            }
-        """
-        if not self.any_node_is_running_or_pending():
-            raise RuntimeError("Cluster does not exist. Cannot list ips of cluster that does not exist")
-
-        return {
-            "master_public_ip": self.cluster.public_ips[0],
-            "worker_public_ips": self.cluster.public_ips[1:],
-            "master_private_ip": self.cluster.private_ips[0],
-            "worker_private_ips": self.cluster.private_ips[1:]
-        }
-
-
     def get_shell(self, ssh_key_path=None, use_bastion=False, use_public_ips=True,
                   wait_for_ssh=True, wait_for_ssh_timeout=120):
         """
@@ -317,6 +194,8 @@ class EC2NodeCluster:
     is also true for placement groups if using them.
 
     """
+
+
     def __init__(self,
                  node_count,
                  cluster_name,
