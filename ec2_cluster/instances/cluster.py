@@ -12,16 +12,6 @@ from ec2_cluster.shells.control import ClusterShell
 
 
 
-class AttrDict(dict):
-    """
-    Class for working with dicts using dot notation
-    """
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
-
-    def __str__(self):
-        return json.dumps(self.__dict__, indent=4)
 
 
 
