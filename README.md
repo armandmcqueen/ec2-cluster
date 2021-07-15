@@ -13,7 +13,7 @@ with ec3.Cluster("ec3_config.yaml", instances=5) as cluster:
 
 `ec3` can also be used without a context manager and then the instances won't be shut down until shutdown is manually triggered. This can be useful for long-running jobs.
 
-\
+
 ## Quickstart
 
 This code will launch a cluster of EC2 instances, run the command `hostname` on all of them, return the results of the command, and then tear down the cluster.

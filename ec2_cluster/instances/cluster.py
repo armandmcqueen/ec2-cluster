@@ -2,6 +2,7 @@ import boto3
 import time
 import json
 import yaml
+from typing import List
 from pathlib import Path
 
 from ec2_cluster.utils import humanize_float
@@ -320,6 +321,19 @@ class EC2NodeCluster:
                  node_count,
                  cluster_name,
                  region,
+                 vpc_id,
+                 subnet_id,
+                 ami_id,
+                 volume_gbs,
+                 volume_type,
+                 keypair,
+                 security_group_ids,
+                 iam_ec2_role_name,
+                 instance_type,
+                 use_placement_group=False,
+                 iops=None,
+                 volume_throughput=None,
+                 tags=None,
                  always_verbose=False):
         """
         Args:
@@ -327,6 +341,7 @@ class EC2NodeCluster:
             cluster_name: The unique name of the cluster.
             region: The AWS region
             always_verbose: True to force all EC2NodeCluster methods to run in verbose mode
+            TODO: Fix docstring
         """
 
         self._always_verbose = always_verbose
@@ -338,8 +353,41 @@ class EC2NodeCluster:
         self.cluster_sg_name = f'{self.cluster_name}-intracluster-ssh'
         self.cluster_placement_group_name = f'{self.cluster_name}-placement-group'  # Defined, but might not be used
 
-        self.nodes = [EC2Node(node_name, self.region)
-                      for node_name in self.node_names]
+        self.vpc = vpc_id
+        self.subnet = subnet_id
+        self.ami = ami_id
+        self.instance_type = instance_type
+        self.keypair = keypair
+        self.security_group_ids = security_group_ids
+        self.iam_role_name = iam_ec2_role_name
+        self.volume_size_gb = volume_gbs
+        self.volume_type = volume_type
+        self.volume_iops = iops
+        self.volume_throughput = volume_throughput
+        self.tags = tags
+        self.use_placement_group = use_placement_group
+
+        self.nodes = [
+            EC2Node(
+                node_name,
+                self.region,
+                self.vpc,
+                self.subnet,
+                self.ami,
+                self.instance_type,
+                self.keypair,
+                self.security_group_ids,
+                self.iam_role_name,
+                # placement_group_name=None,
+                volume_size_gb=self.volume_size_gb,
+                volume_type=self.volume_type,
+                volume_iops=self.volume_iops,
+                volume_throughput=self.volume_throughput,
+                tags=self.tags,
+                always_verbose=self._always_verbose
+            )
+            for node_name in self.node_names
+        ]  # type: List[EC2Node]
 
         self.session = boto3.session.Session(region_name=region)
         self.ec2_client = self.session.client("ec2")
@@ -559,22 +607,6 @@ class EC2NodeCluster:
 
 
     def launch(self,
-               az,
-               vpc_id,
-               subnet_id,
-               ami_id,
-               ebs_snapshot_id,
-               volume_gbs,
-               volume_type,
-               key_name,
-               security_group_ids,
-               iam_ec2_role_name,
-               instance_type,
-               use_placement_group=False,
-               iops=None,
-               eia_type=None,
-               ebs_optimized=True,
-               tags=None,
                dry_run=False,
                timeout_secs=None,
                wait_secs=10,
@@ -617,43 +649,29 @@ class EC2NodeCluster:
         if self.any_node_is_running_or_pending():
             raise RuntimeError("Nodes with names matching this cluster already exist!")
 
-
         if self.security_group_exists(self.cluster_sg_name):
             vlog("Cluster security group already exists. No need to recreate")
         else:
             vlog("Creating cluster security group")
-            self.create_cluster_sg(vpc_id, verbose=verbose)
+            self.create_cluster_sg(self.vpc, verbose=verbose)
 
-        security_group_ids.append(self.cluster_sg_id)
-
-        if use_placement_group:
+        if self.use_placement_group:
             vlog("Creating placement group")
             self.create_placement_group_if_doesnt_exist()
         else:
             vlog("No placement group needed")
+
+        for node in self.nodes:
+            node.security_group_ids.append(self.cluster_sg_id)
+            if self.use_placement_group:
+                node.placement_group_name = self.cluster_placement_group_name
 
         start = time.time()
         for launch_ind, ec2_node in enumerate(self.nodes):
             while True:
                 try:
 
-                    ec2_node.launch(az,
-                                    vpc_id,
-                                    subnet_id,
-                                    ami_id,
-                                    ebs_snapshot_id,
-                                    volume_gbs,
-                                    volume_type,
-                                    key_name,
-                                    security_group_ids,
-                                    iam_ec2_role_name,
-                                    instance_type,
-                                    placement_group_name=self.cluster_placement_group_name if use_placement_group else None,
-                                    iops=iops,
-                                    eia_type=eia_type,
-                                    ebs_optimized=ebs_optimized,
-                                    tags=tags,
-                                    dry_run=dry_run)
+                    ec2_node.launch(dry_run=dry_run)
 
                     vlog(f'Node {launch_ind+1} of {self.node_count} successfully launched')
                     break

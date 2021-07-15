@@ -57,11 +57,9 @@ class EC2Node:
             volume_size_gb=200,
             volume_type='gp3',
             volume_iops=3000,
-            # TODO: volume_throughput for gp3
-            # eia_type=None,
+            volume_throughput=None,
             # ebs_optimized=True,
-            # tags=None,
-            # ebs_snapshot_id,
+            tags=None,
             always_verbose=False
     ):
         """Launch an instance.
@@ -81,7 +79,6 @@ class EC2Node:
             :param instance_type: The API name of the instance type to launch, e.g. 'p3.16xlarge'
             :param placement_group_name: Optional. The name of a placement group to launch the instance into.
             :param iops: If volume_type == 'io1', the number of provisioned IOPS for the EBS volume.
-            :param eia_type: Optional. The Elastic Inference Accelerator type, e.g. 'eia1.large'
             :param ebs_optimized: Whether to use an EBS optimized instance. Should basically always be True. Certain older
                                   instance types don't support EBS optimized instance or offer at a small fee.
             :param tags: List of custom tags to attach to the EC2 instance. List of dicts, each with a 'Key' and a 'Value'
@@ -103,7 +100,11 @@ class EC2Node:
         self.volume_size_gb = volume_size_gb
         self.volume_type = volume_type
         self.volume_iops = volume_iops
+        self.volume_throughput = volume_throughput
+
+        # TODO: Correctly determine if it should be EBS optimized
         self.ebs_optimized = True
+        self.tags = tags
 
         self.session = boto3.session.Session(region_name=region)
         self.ec2_client = self.session.client("ec2")
@@ -310,37 +311,26 @@ class EC2Node:
         )
 
 
-    def launch(self,
-               tags=None,
-               dry_run=False):
+    def launch(self, dry_run=False):
 
-
-        security_group_ids = self.security_group_ids
-        subnet_id = self.subnet
-        ami_id = self.ami
-        volume_size_gb = self.volume_size_gb
-        volume_type = self.volume_type
-        key_name = self.keypair
-        iam_ec2_role_name = self.iam_role_name
-        instance_type = self.instance_type
-        placement_group_name = self.placement_group_name
-        iops = self.volume_iops
-        ebs_optimized = self.ebs_optimized
-
+        # TODO: Move validation to init
         #############################################
         # Validate input
         #############################################
 
-        assert isinstance(security_group_ids, list), "security_group_ids must be a nonempty list"
-        assert len(security_group_ids) > 0, "security_group_ids must be a nonempty list"
+        assert isinstance(self.security_group_ids, list), "security_group_ids must be a nonempty list"
+        assert len(self.security_group_ids) > 0, "security_group_ids must be a nonempty list"
 
-        if volume_type == 'io1':
-            assert iops is not None
+        if self.volume_type == 'io1':
+            assert self.volume_iops is not None
 
-        if tags:
-            assert isinstance(tags, list), "Tags must be a list if not None"
-            assert len(tags) != 0, "Tags cannot be an empty list. Use None instead"
-            for tag in tags:
+        # TODO: Validate volume throughput makes sense (is it required for gp3?)
+        # TODO: Validate iops isn't present in cases where it can't be set
+
+        if self.tags:
+            assert isinstance(self.tags, list), "Tags must be a list if not None"
+            assert len(self.tags) != 0, "Tags cannot be an empty list. Use None instead"
+            for tag in self.tags:
                 assert isinstance(tag, dict), "Elements in tags must be dicts"
                 assert 'Key' in tag.keys(), "Each tag must have both a 'Key' and a 'Value' field. 'Key' missing"
                 assert tag['Key'] != "Name", "'Name' tag cannot be included as a tag. It will be set according to " \
@@ -356,8 +346,8 @@ class EC2Node:
         # Optional placement group
         # placement_params = {"AvailabilityZone": az}
         placement_params = {}
-        if placement_group_name is not None:
-            placement_params["GroupName"] = placement_group_name
+        if self.placement_group_name is not None:
+            placement_params["GroupName"] = self.placement_group_name
 
         # EIA
         # if eia_type is None:
@@ -367,22 +357,25 @@ class EC2Node:
 
         # Tags
         all_tags = [{'Key': 'Name', 'Value': self.name}]
-        if tags:
-            all_tags += tags
+        if self.tags:
+            all_tags += self.tags
 
         # EBS
         ebs_params = {
             # 'SnapshotId': ebs_snapshot_id,
-            'VolumeSize': volume_size_gb,
-            'VolumeType': volume_type
+            'VolumeSize': self.volume_size_gb,
+            'VolumeType': self.volume_type
         }
 
-        if iops:
-            ebs_params['Iops'] = iops
+        if self.volume_iops:
+            ebs_params['Iops'] = self.volume_iops
+
+        if self.volume_throughput:
+            ebs_params['Throughput'] = self.volume_throughput
 
         iam_instance_profile = {}
-        if iam_ec2_role_name is not None:
-            iam_instance_profile['Name'] = iam_ec2_role_name
+        if self.iam_role_name is not None:
+            iam_instance_profile['Name'] = self.iam_role_name
 
 
         ########################################################
@@ -404,21 +397,20 @@ class EC2Node:
             #         'Ebs': ebs_params,
             #     },
             # ],
-            ImageId=ami_id,
-            InstanceType=instance_type,
-            KeyName=key_name,
+            ImageId=self.ami,
+            InstanceType=self.instance_type,
+            KeyName=self.keypair,
             MaxCount=1,
             MinCount=1,
             Monitoring={
                 'Enabled': False
             },
             Placement=placement_params,
-            SecurityGroupIds=security_group_ids,
-            SubnetId=subnet_id,
+            SecurityGroupIds=self.security_group_ids,
+            SubnetId=self.subnet,
             DryRun=dry_run,
-            EbsOptimized=ebs_optimized,
+            EbsOptimized=self.ebs_optimized,
             IamInstanceProfile=iam_instance_profile,
-            # ElasticInferenceAccelerators=eia_param_list,
             TagSpecifications=[
                 {
                     'ResourceType': 'instance',
@@ -720,7 +712,7 @@ def main():
         placement_group_name=None,
         volume_size_gb=200,
         volume_type='gp2',
-        volume_iops=None,
+        # volume_iops=None,
         # eia_type=None,
         # ebs_optimized=True,
         # tags=None,
