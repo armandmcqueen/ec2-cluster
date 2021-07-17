@@ -75,26 +75,6 @@ class ConfigCluster:
                                       region=self.config.region)
 
 
-    def __enter__(self):
-        """Creates a fresh cluster which will be automatically cleaned up.
-
-        Will raise exception if the cluster already exists.
-        """
-        if self.any_node_is_running_or_pending():
-            raise RuntimeError(f"Cluster with name '{self.cluster_name}' already exists.")
-
-        self.launch(verbose=True)
-        return self
-
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.terminate(verbose=True, fast_terminate=True)
-
-    @property
-    def config(self):
-        """Get config AttrDict"""
-        return self._config
-
 
     def validate_config_dict(self, config_dict):
         """Validate that a given configuration is valid
@@ -135,39 +115,7 @@ class ConfigCluster:
             config_dict["placement_group"] = False
 
 
-    def get_shell(self, ssh_key_path=None, use_bastion=False, use_public_ips=True,
-                  wait_for_ssh=True, wait_for_ssh_timeout=120):
-        """
-        Create a ClusterShell from a ConfigCluster.
 
-        :param ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem.
-                             If param is None, will assume that the key is available at ~/.ssh/${KEY_PAIR_NAME}.pem
-        :param use_bastion: Whether or not to use the master node as the bastion host for SSHing to worker nodes.
-        :param use_public_ips: Whether to build the ClusterShell from the instances public IPs or private IPs.
-                               Typically this should be True when running code on a laptop/local machine and False
-                               when running on an EC2 instance
-        :param wait_for_ssh: If true, block until commands can be run on all instances. This can be useful when
-                             you are launching EC2 instances, because the instances may be in the RUNNING state
-                             but the SSH daemon may not yet be running.
-        :param wait_for_ssh_timeout: Number of seconds to spend trying to run commands on the instances before failing.
-                                     This is NOT the SSH timeout, this upper bounds the amount of time spent retrying
-                                     failed SSH connections. Only used if wait_for_ssh=True.
-        :return: ClusterShell
-        """
-
-        ips = self.public_ips if use_public_ips else self.private_ips
-
-        if ssh_key_path is None:
-            ssh_key_path = Path(f"~/.ssh/{self.config.key_name}.pem").expanduser()
-
-        sh = ClusterShell(username=self.config.username,
-                          master_ip=ips[0],
-                          worker_ips=ips[1:],
-                          ssh_key_path=ssh_key_path,
-                          use_bastion=use_bastion,
-                          wait_for_ssh=wait_for_ssh,
-                          wait_for_ssh_timeout=wait_for_ssh_timeout)
-        return sh
 
 
 
@@ -197,18 +145,20 @@ class EC2NodeCluster:
 
 
     def __init__(self,
-                 node_count,
-                 cluster_name,
-                 region,
-                 vpc_id,
-                 subnet_id,
-                 ami_id,
-                 volume_gbs,
-                 volume_type,
-                 keypair,
-                 security_group_ids,
-                 iam_ec2_role_name,
-                 instance_type,
+                 config=None,
+                 config_file_path=None,
+                 node_count=None,
+                 cluster_name=None,
+                 region=None,
+                 vpc_id=None,
+                 subnet_id=None,
+                 ami_id=None,
+                 volume_gbs=None,
+                 volume_type=None,
+                 keypair=None,
+                 security_group_ids=None,
+                 iam_ec2_role_name=None,
+                 instance_type=None,
                  use_placement_group=False,
                  iops=None,
                  volume_throughput=None,
@@ -275,6 +225,22 @@ class EC2NodeCluster:
         self._cluster_sg_id = None
 
 
+    def __enter__(self):
+        """Creates a fresh cluster which will be automatically cleaned up.
+
+        Will raise exception if the cluster already exists.
+        """
+        if self.any_node_is_running_or_pending():
+            raise RuntimeError(f"Cluster with name '{self.cluster_name}' already exists.")
+
+        self.launch(verbose=True)
+        return self
+
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.terminate(verbose=True, fast_terminate=True)
+
+
     def _get_vlog(self, force_verbose=False, prefix=None):
         def vlog_fn_verbose(s):
             out = "" if prefix is None else f'[{prefix}] '
@@ -286,6 +252,41 @@ class EC2NodeCluster:
 
         vlog_fn = vlog_fn_verbose if self._always_verbose or force_verbose else vlog_fn_noop
         return vlog_fn
+
+    # def get_shell(self, ssh_key_path=None, use_bastion=False, use_public_ips=True,
+    #               wait_for_ssh=True, wait_for_ssh_timeout=120):
+    #     """
+    #     Create a ClusterShell from a ConfigCluster.
+    #
+    #     :param ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem.
+    #                          If param is None, will assume that the key is available at ~/.ssh/${KEY_PAIR_NAME}.pem
+    #     :param use_bastion: Whether or not to use the master node as the bastion host for SSHing to worker nodes.
+    #     :param use_public_ips: Whether to build the ClusterShell from the instances public IPs or private IPs.
+    #                            Typically this should be True when running code on a laptop/local machine and False
+    #                            when running on an EC2 instance
+    #     :param wait_for_ssh: If true, block until commands can be run on all instances. This can be useful when
+    #                          you are launching EC2 instances, because the instances may be in the RUNNING state
+    #                          but the SSH daemon may not yet be running.
+    #     :param wait_for_ssh_timeout: Number of seconds to spend trying to run commands on the instances before failing.
+    #                                  This is NOT the SSH timeout, this upper bounds the amount of time spent retrying
+    #                                  failed SSH connections. Only used if wait_for_ssh=True.
+    #     :return: ClusterShell
+    #     """
+    #
+    #     ips = self.public_ips if use_public_ips else self.private_ips
+    #
+    #     if ssh_key_path is None:
+    #         ssh_key_path = Path(f"~/.ssh/{self.config.key_name}.pem").expanduser()
+    #
+    #     sh = ClusterShell(username=self.config.username,
+    #                       master_ip=ips[0],
+    #                       worker_ips=ips[1:],
+    #                       ssh_key_path=ssh_key_path,
+    #                       use_bastion=use_bastion,
+    #                       wait_for_ssh=wait_for_ssh,
+    #                       wait_for_ssh_timeout=wait_for_ssh_timeout)
+    #     return sh
+    #
 
     @property
     def instance_ids(self):

@@ -29,24 +29,9 @@ params:
     param_type: str
     param_desc: The id of the AMI, e.g. 'ami-0b294f219d14e6a82'
 
-  - param_name: ebs_snapshot_id
-    param_type: str
-    param_desc: >
-      The id of the EBS snapshot associated with the AMI, e.g. 'snap-013f2dc8c2ecc97d9'.
-      If you use the AWS console EC2 launch wizard and choose the above AMI, the associated
-      snapshot id will be displayed on step four of the wizard (Step 4. Add Storage)
-
   - param_name: username
     param_type: str
     param_desc: The username associated with the OS of the AMI, e.g. 'ubuntu' or 'ec2-user'
-
-  - param_name: ebs_optimized
-    param_type: bool
-    param_desc: >
-      Whether or not the instance is EBS optimized. By default this is true, which is the
-      correct value for most instance types. For some instances, e.g. t2.micro, this needs
-      to be set to false. Always leave this as True unless you get errors saying 'EBS-optimized instances are not
-      supported for your requested configuration'
 
   - param_name: volume_type
     param_type: str
@@ -59,6 +44,10 @@ params:
   - param_name: volume_gbs
     param_type: int
     param_desc: The size of the EBS volume to provision (in Gigabytes)
+
+  - param_name: volume_throughput
+    param_type: int
+    param_desc: TODO
 
   - param_name: instance_type
     param_type: str
