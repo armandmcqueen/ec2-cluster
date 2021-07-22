@@ -29,13 +29,14 @@ class EC2ClusterError(Exception):
 def validate_config_file_dict(config_file_dict):
     for field_name, field_val in config_file_dict.items():
         # TODO: Better error handling UX
-        assert field_name in FIELDS
+        assert field_name in FIELDS, f"Field '{field_name}' from config file isn't a recognized field name"
         assert isinstance(field_val, FIELDS[field_name].typ)
-        if isinstance(field_val, List):
-            val_fn = FIELDS[field_name].list_val_fn
-            for item in field_val:
-                if not val_fn(item):
-                    raise EC2ClusterError()
+
+        is_valid = FIELDS[field_name].validation_fn(field_name, field_val)
+        if not is_valid:
+            raise EC2ClusterError(f"Cluster config file does not pass validation due "
+                                  f"to field '{field_name}' having invalid value {field_val}")
+
 
 
 class Cluster:
@@ -103,13 +104,15 @@ class Cluster:
 
         # The names of the args should match the fields in a ClusterConfig, with a few exceptions.
         # Programmatically ensure this to avoid drift.
-        excluded_args = ["config_file_path", "cluster_id_append", "always_verbose"]
+        excluded_args = ["self", "config_file_path", "cluster_id_append", "always_verbose"]
         for excluded_arg in excluded_args:
             assert excluded_arg in args.keys()  # Don't let excluded_args drift either
         for arg_name in args.keys():
             if arg_name in excluded_args:
                 continue
             assert arg_name in FIELDS, f"There is argument that is not recognized as a valid config field: {arg_name}"
+        for field_name in FIELDS:
+            assert field_name in args.keys(), f"There is a config field that is not being set via args: {field_name}"
 
         self.cfg = ClusterConfig()
 
@@ -123,7 +126,7 @@ class Cluster:
             setattr(self.cfg, field_name, field_val)
 
         # Add in fields specified via args, overwriting any existing fields
-        for field_name, field_val in args.keys():
+        for field_name, field_val in args.items():
             if field_name in excluded_args:
                 continue
             assert hasattr(self.cfg, field_name), f"Tried to dynamically set a field ({field_name}) " \
@@ -167,7 +170,7 @@ class Cluster:
             for node_name in self.node_names
         ]  # type: List[EC2Node]
 
-        self.session = boto3.session.Session(region_name=region)
+        self.session = boto3.session.Session(region_name=self.cfg.region)
         self.ec2_client = self.session.client("ec2")
         self.ec2_resource = self.session.resource("ec2")
 
@@ -180,11 +183,20 @@ class Cluster:
         """
         if self.any_node_is_running_or_pending():
             raise RuntimeError(f"Cluster with name '{self.cfg.cluster_id}' already exists.")
-
-        self.launch(verbose=True)
+        try:
+            self.launch(verbose=True)
+        except KeyboardInterrupt as e:
+            print("\n\nKeyboardInterrupt, cleaning up resources before exiting")
+            self.terminate(verbose=True, fast_terminate=True)
+            raise e
+        except Exception as e:
+            print("Encountered error, cleaning up resources before exiting")
+            self.terminate(verbose=True, fast_terminate=True)
+            raise e
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        print("Cleaning up resources before exiting")
         self.terminate(verbose=True, fast_terminate=True)
 
     def _get_vlog(self, force_verbose=False, prefix=None):
@@ -430,7 +442,6 @@ class Cluster:
 
     def launch(self,
                dry_run=False,
-               timeout_secs=None,
                wait_secs=10,
                verbose=True):
         """Launch the cluster nodes.
@@ -462,9 +473,6 @@ class Cluster:
             wait_secs: The number of seconds to wait before retrying launching a node.
             verbose: True to print out detailed information about progress.
         """
-        if timeout_secs == 'None':
-            timeout_secs = None
-
         vlog = self._get_vlog(verbose, 'EC2NodeCluster.launch')
 
         if self.any_node_is_running_or_pending():
@@ -500,8 +508,8 @@ class Cluster:
                     vlog(f'Error launching node: {str(e)}')
                     vlog(f'EC2NodeCluster.launch TODO: Only repeat when the error is insufficient capacity.')
 
-                    if timeout_secs is not None and (time.time() - start) > timeout_secs:
-                        vlog(f'Timed out trying to launch node #{launch_ind+1}. Max timeout of {timeout_secs} seconds reached')
+                    if self.cfg.timeout is not None and (time.time() - start) > self.cfg.timeout:
+                        vlog(f'Timed out trying to launch node #{launch_ind+1}. Max timeout of {self.cfg.timeout} seconds reached')
                         vlog("Now trying to clean up partially launched cluster")
                         for terminate_ind, ec2_node_to_delete in enumerate(self.nodes):
                             try:
@@ -524,10 +532,10 @@ class Cluster:
                     else:
 
                         vlog(f'Retrying launch of node #{launch_ind+1} in {wait_secs} seconds.')
-                        if timeout_secs is None:
+                        if self.cfg.timeout is None:
                             vlog(f'There is no timeout. Elapsed time trying to launch this node: {humanize_float(time.time() - start)} seconds')
                         else:
-                            vlog(f'Will time out after {timeout_secs} seconds. Current elapsed time: {humanize_float(time.time() - start)} seconds')
+                            vlog(f'Will time out after {self.cfg.timeout} seconds. Current elapsed time: {humanize_float(time.time() - start)} seconds')
                         time.sleep(wait_secs)
 
         vlog("Now waiting for all nodes to reach RUNNING state")
@@ -566,7 +574,6 @@ class Cluster:
 
         vlog("Waiting for all nodes to reach terminated state")
         self.wait_for_all_nodes_to_be_terminated()
-
 
         if self.placement_group_exists():
             self.delete_placement_group()

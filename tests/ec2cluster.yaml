@@ -1,14 +1,14 @@
 cluster_id: "example-cluster"
 region: "us-east-1"
-vpc : "vpc-09fe736b3807bbecf"
-subnet: "subnet-016dd4822d0e200b1"
+vpc : "vpc-022fda37bce06c583"
+subnet: "subnet-049976a2bace4a6f5"
 ami: "ami-033d0645d1f338a00" # Amazon Linux 2 (July 2021)
 username: "ec2-user"
 ebs_type: "gp3"
 instance_type: "t3.nano"
-node_count: 2
+num_instances: 2
 iam_role: "ec2-cluster-test-role"
-keypair: "ec2-cluster-test"
+keypair: "ec2-cluster-test-us-east-1"
 security_groups:
-  - "sg-08f2dd4548d863796" # Allow SSH access from dev machine
-timeout: 600
+  - "sg-0b3ada0862ce7ef94" # Allow SSH access from dev machine
+timeout: 10

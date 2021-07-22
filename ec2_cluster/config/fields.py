@@ -89,7 +89,7 @@ FIELDS = {
     ),
     "timeout": ConfigField(
         typ=int,
-        default=None,
+        default=None,  # None indicates trying forever
         validation_fn=validations.is_positive_int_or_none
     ),
     "tags": ConfigField(
