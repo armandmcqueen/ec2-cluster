@@ -11,12 +11,13 @@ from pathlib import Path
 
 # NOTE 1: Not certain I actually need this, but was a proposed fix for 'error reading SSH banner' and I haven't seen
 #         that error since. https://github.com/paramiko/paramiko/issues/673#issuecomment-436815430
+MAX_CONNS_PER_GROUP = 10
 
 def humanize_float(num):
     return "{0:,.2f}".format(num)
 
 
-MAX_CONNS_PER_GROUP = 10
+
 
 class ClusterShell:
     """

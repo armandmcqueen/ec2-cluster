@@ -234,7 +234,7 @@ class Cluster:
         ips = self.public_ips if use_public_ips else self.private_ips
 
         if ssh_key_path is None:
-            ssh_key_path = Path(f"~/.ssh/{self.cfg.keypair}").expanduser()
+            ssh_key_path = Path(f"~/.ssh/{self.cfg.keypair}.pem").expanduser()
 
         sh = ClusterShell(username=self.cfg.username,
                           master_ip=ips[0],
