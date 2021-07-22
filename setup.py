@@ -19,9 +19,14 @@ setuptools.setup(
         packages=setuptools.find_packages(),
         include_package_data=True,
         classifiers=[
-            "Programming Language :: Python :: 3.6"
+            "Programming Language :: Python :: 3.6",
+            "Programming Language :: Python :: 3.7",
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
         ],
         install_requires=[
+            # TODO: We can probably upgrade this right?
             'paramiko<=2.5.1', # Bug in paramiko 2.6.0 (https://github.com/armandmcqueen/ec2-cluster/issues/10)
             'fabric2>2.3.0',
             'boto3',

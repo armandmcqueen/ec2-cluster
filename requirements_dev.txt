@@ -1,9 +1,6 @@
-fabric2
-boto3
-pyyaml
-tabulate
-cryptography
+pytest
 
+# Docs
 setuptools
 sphinx
 sphinx-rtd-theme

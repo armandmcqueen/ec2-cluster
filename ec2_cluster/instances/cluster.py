@@ -1,24 +1,47 @@
 import boto3
 import time
 import json
-import yaml
 from typing import List
 from pathlib import Path
 
-from ec2_cluster.utils import humanize_float
 from ec2_cluster.instances.node import EC2Node
-from ec2_cluster.config.config import ClusterConfig
+from ec2_cluster.config.config import ClusterConfig, FIELDS
 from ec2_cluster.shells.control import ClusterShell
+from typing import Optional, Union, Dict, List
+import warnings
+
+# Why does this warning exist? wtf go away
+warnings.filterwarnings(
+                "ignore",
+                "The _yaml extension module is now located at yaml._yaml and its location is "
+                "subject to change.  To use the LibYAML-based parser and emitter, import "
+                "from `yaml`: `from yaml import CLoader as Loader, CDumper as Dumper`.")
+import yaml
 
 
+def humanize_float(num): return "{0:,.2f}".format(num)
+
+# TODO: Centralize error types
+class EC2ClusterError(Exception):
+    pass
 
 
+def validate_config_file_dict(config_file_dict):
+    for field_name, field_val in config_file_dict.items():
+        # TODO: Better error handling UX
+        assert field_name in FIELDS
+        assert isinstance(field_val, FIELDS[field_name].typ)
+        if isinstance(field_val, List):
+            val_fn = FIELDS[field_name].list_val_fn
+            for item in field_val:
+                if not val_fn(item):
+                    raise EC2ClusterError()
 
 
-
-
-class ConfigCluster:
-    """Class for defining an EC2NodeCluster in a config file
+class Cluster:
+    # TODO: Fix docstrings for class (including overly verbose ones)
+    """
+    Class for defining an EC2NodeCluster in a config file
 
     Lightweight wrapper around EC2NodeCluster where you define the launch configuration at instantiation time instead
     of at runtime. Configuration values are loaded from a YAML file, with values optionally overwritten in `__init__`.
@@ -31,98 +54,6 @@ class ConfigCluster:
         other_args: Dictionary containing additional configuration values which will overwrite values from the
                     config file
     """
-    def __init__(self, config_yaml_path=None, other_args=None):
-        if other_args is None:
-            other_args = {}
-
-
-        # Pull in list of params
-        param_list_yaml_path = Path(__file__).parent/"clusterdef_params.yaml"
-        with open(param_list_yaml_path, 'r') as f:
-            self.paramdef_list = yaml.safe_load(f)["params"]
-
-
-        # Use yaml arguments as base if yaml file path was input
-        if config_yaml_path is None:
-            config_dict = {}
-        else:
-            with open(Path(config_yaml_path).absolute(), 'r') as yml:
-                config_dict = yaml.safe_load(yml)
-
-
-        # Add the other_args, overwriting the yaml arguments if the param is defined in both
-        for param_name, param_val in other_args.items():
-            config_dict[param_name] = param_val
-
-        # Find the AZ from the subnet
-        ec2_client = boto3.session.Session(region_name=config_dict["region"]).client("ec2")
-        subnets = ec2_client.describe_subnets(SubnetIds=[config_dict["subnet_id"]])["Subnets"]
-        assert len(subnets) == 1, "There should only be one or zero subnets with that id"
-        config_dict["az"] = subnets[0]["AvailabilityZone"]
-
-        # Validate then convert to AttrDict for dot notation member access
-        self.validate_config_dict(config_dict)
-        self._config = AttrDict(config_dict)
-
-
-        # Define cluster name from params and instantiate EC2NodeCluster
-        template_name = self.config.cluster_template_name
-        node_count = self.config.node_count
-        cluster_id = self.config.cluster_id
-        self.cluster_name = f'{template_name}-{node_count}node-cluster{cluster_id}'
-        self.cluster = EC2NodeCluster(node_count=node_count,
-                                      cluster_name=self.cluster_name,
-                                      region=self.config.region)
-
-
-
-    def validate_config_dict(self, config_dict):
-        """Validate that a given configuration is valid
-
-        Args:
-            config_dict: Dictionary of config values. Descriptions for each config field can be found in
-                        `clusterdef_params.yaml`
-        """
-        # Some params are optional. Handle them separately later
-        maybe_nonexistant_params = ["iops", 'ebs_optimized', 'additional_tags', 'placement_group']
-
-        for p in self.paramdef_list:
-            param_name = p["param_name"]
-            if param_name in maybe_nonexistant_params:
-                continue
-
-            assert param_name in config_dict.keys(), f'Mandatory argument {param_name} is missing'
-            assert config_dict[param_name] is not None, f'Mandatory argument {param_name} is None'
-
-
-        # iops special case. Must be set when ebs_type=="io1"
-        if config_dict["volume_type"] == "io1":
-            assert "iops" in config_dict.keys(), f'When volume_type==io1, iops must be defined. Currently missing'
-            assert config_dict["iops"] is not None, f'When volume_type==io1, iops must be defined. Currently None'
-        else:
-            config_dict["iops"] = None
-
-        # ebs_optimized_instances special case. Defaults to True
-        if "ebs_optimized" not in config_dict.keys() or config_dict["ebs_optimized"] is None:
-            config_dict["ebs_optimized"] = True
-
-        # additional_tags special case. Defaults to None as expected by EC2NodeCluster
-        if "additional_tags" not in config_dict.keys() or config_dict["additional_tags"] is None:
-            config_dict["additional_tags"] = None
-
-        # placement_group special case. Defaults to False
-        if "placement_group" not in config_dict.keys() or config_dict["placement_group"] is None:
-            config_dict["placement_group"] = False
-
-
-
-
-
-
-
-
-
-class EC2NodeCluster:
     """Class for managing a group of EC2 instances as a cluster.
 
     Layer on top of EC2Node. Allows you to work with instances as a group. For example, create and attach a security
@@ -143,76 +74,94 @@ class EC2NodeCluster:
 
     """
 
+    def __init__(
+            self,
+            config_file_path: Optional[Union[str, Path]] = None,
+            cluster_id: Optional[str] = None,
+            region: Optional[str] = None,
+            vpc: Optional[str] = None,
+            subnet: Optional[str] = None,
+            ami: Optional[str] = None,
+            ebs_type: Optional[str] = None,
+            ebs_size: Optional[int] = None,
+            ebs_iops: Optional[int] = None,
+            ebs_throughput: Optional[int] = None,
+            instance_type: Optional[str] = None,
+            num_instances: Optional[int] = None,
+            iam_role: Optional[str] = None,
+            keypair: Optional[str] = None,
+            security_groups: Optional[List[str]] = None,
+            timeout: Optional[int] = None,
+            tags: Optional[List[Dict]] = None,
+            username: Optional[str] = None,
+            placement_group: Optional[bool] = None,
+            cluster_id_append: Optional[str] = None,
+            always_verbose: bool = False
+    ):
+        # Args must be at the top of __init__ so other variables don't pollute it
+        args = locals()
 
-    def __init__(self,
-                 config=None,
-                 config_file_path=None,
-                 node_count=None,
-                 cluster_name=None,
-                 region=None,
-                 vpc_id=None,
-                 subnet_id=None,
-                 ami_id=None,
-                 volume_gbs=None,
-                 volume_type=None,
-                 keypair=None,
-                 security_group_ids=None,
-                 iam_ec2_role_name=None,
-                 instance_type=None,
-                 use_placement_group=False,
-                 iops=None,
-                 volume_throughput=None,
-                 tags=None,
-                 always_verbose=False):
-        """
-        Args:
-            node_count: Number of nodes in the cluster
-            cluster_name: The unique name of the cluster.
-            region: The AWS region
-            always_verbose: True to force all EC2NodeCluster methods to run in verbose mode
-            TODO: Fix docstring
-        """
+        # The names of the args should match the fields in a ClusterConfig, with a few exceptions.
+        # Programmatically ensure this to avoid drift.
+        excluded_args = ["config_file_path", "cluster_id_append", "always_verbose"]
+        for excluded_arg in excluded_args:
+            assert excluded_arg in args.keys()  # Don't let excluded_args drift either
+        for arg_name in args.keys():
+            if arg_name in excluded_args:
+                continue
+            assert arg_name in FIELDS, f"There is argument that is not recognized as a valid config field: {arg_name}"
+
+        self.cfg = ClusterConfig()
+
+        # Load values from file
+        with Path(config_file_path).absolute().open() as f:
+            config_file_dict = yaml.safe_load(f)
+
+        validate_config_file_dict(config_file_dict)
+
+        for field_name, field_val in config_file_dict.items():
+            setattr(self.cfg, field_name, field_val)
+
+        # Add in fields specified via args, overwriting any existing fields
+        for field_name, field_val in args.keys():
+            if field_name in excluded_args:
+                continue
+            assert hasattr(self.cfg, field_name), f"Tried to dynamically set a field ({field_name}) " \
+                                                  f"that doesn't exist in the statically defined " \
+                                                  f"object (fields={self.cfg.field_names})"
+            if field_val is not None:
+                setattr(self.cfg, field_name, field_val)
+
+        assert self.cfg.cluster_id is not None, "cluster_id must be defined"
+        if cluster_id_append:
+            assert isinstance(cluster_id_append, str), f"cluster_id_append must be a string " \
+                                                       f"but was {type(cluster_id_append)}"
+            self.cfg.cluster_id += cluster_id_append
+
+        self.cfg.fill_in_defaults()
+        self.cfg.validate()
 
         self._always_verbose = always_verbose
-
-        self.node_count = node_count
-        self.region = region
-        self.cluster_name = cluster_name
-        self.node_names = [f'{self.cluster_name}-node{i+1}' for i in range(node_count)]
-        self.cluster_sg_name = f'{self.cluster_name}-intracluster-ssh'
-        self.cluster_placement_group_name = f'{self.cluster_name}-placement-group'  # Defined, but might not be used
-
-        self.vpc = vpc_id
-        self.subnet = subnet_id
-        self.ami = ami_id
-        self.instance_type = instance_type
-        self.keypair = keypair
-        self.security_group_ids = security_group_ids
-        self.iam_role_name = iam_ec2_role_name
-        self.volume_size_gb = volume_gbs
-        self.volume_type = volume_type
-        self.volume_iops = iops
-        self.volume_throughput = volume_throughput
-        self.tags = tags
-        self.use_placement_group = use_placement_group
-
+        self.node_names = [f'{self.cfg.cluster_id}-node{i+1}' for i in range(self.cfg.num_instances)]
+        self.cluster_sg_name = f'{self.cfg.cluster_id}-intracluster-ssh'
+        self.placement_group_name = f'{self.cfg.cluster_id}-placement-group' if self.cfg.placement_group else None
         self.nodes = [
             EC2Node(
                 node_name,
-                self.region,
-                self.vpc,
-                self.subnet,
-                self.ami,
-                self.instance_type,
-                self.keypair,
-                self.security_group_ids,
-                self.iam_role_name,
-                # placement_group_name=None,
-                volume_size_gb=self.volume_size_gb,
-                volume_type=self.volume_type,
-                volume_iops=self.volume_iops,
-                volume_throughput=self.volume_throughput,
-                tags=self.tags,
+                self.cfg.region,
+                self.cfg.vpc,
+                self.cfg.subnet,
+                self.cfg.ami,
+                self.cfg.instance_type,
+                self.cfg.keypair,
+                self.cfg.security_groups,
+                self.cfg.iam_role,
+                placement_group_name=self.placement_group_name,
+                volume_size_gb=self.cfg.ebs_size,
+                volume_type=self.cfg.ebs_type,
+                volume_iops=self.cfg.ebs_iops,
+                volume_throughput=self.cfg.ebs_throughput,
+                tags=self.cfg.tags,
                 always_verbose=self._always_verbose
             )
             for node_name in self.node_names
@@ -224,22 +173,19 @@ class EC2NodeCluster:
 
         self._cluster_sg_id = None
 
-
     def __enter__(self):
         """Creates a fresh cluster which will be automatically cleaned up.
 
         Will raise exception if the cluster already exists.
         """
         if self.any_node_is_running_or_pending():
-            raise RuntimeError(f"Cluster with name '{self.cluster_name}' already exists.")
+            raise RuntimeError(f"Cluster with name '{self.cfg.cluster_id}' already exists.")
 
         self.launch(verbose=True)
         return self
 
-
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.terminate(verbose=True, fast_terminate=True)
-
 
     def _get_vlog(self, force_verbose=False, prefix=None):
         def vlog_fn_verbose(s):
@@ -253,40 +199,40 @@ class EC2NodeCluster:
         vlog_fn = vlog_fn_verbose if self._always_verbose or force_verbose else vlog_fn_noop
         return vlog_fn
 
-    # def get_shell(self, ssh_key_path=None, use_bastion=False, use_public_ips=True,
-    #               wait_for_ssh=True, wait_for_ssh_timeout=120):
-    #     """
-    #     Create a ClusterShell from a ConfigCluster.
-    #
-    #     :param ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem.
-    #                          If param is None, will assume that the key is available at ~/.ssh/${KEY_PAIR_NAME}.pem
-    #     :param use_bastion: Whether or not to use the master node as the bastion host for SSHing to worker nodes.
-    #     :param use_public_ips: Whether to build the ClusterShell from the instances public IPs or private IPs.
-    #                            Typically this should be True when running code on a laptop/local machine and False
-    #                            when running on an EC2 instance
-    #     :param wait_for_ssh: If true, block until commands can be run on all instances. This can be useful when
-    #                          you are launching EC2 instances, because the instances may be in the RUNNING state
-    #                          but the SSH daemon may not yet be running.
-    #     :param wait_for_ssh_timeout: Number of seconds to spend trying to run commands on the instances before failing.
-    #                                  This is NOT the SSH timeout, this upper bounds the amount of time spent retrying
-    #                                  failed SSH connections. Only used if wait_for_ssh=True.
-    #     :return: ClusterShell
-    #     """
-    #
-    #     ips = self.public_ips if use_public_ips else self.private_ips
-    #
-    #     if ssh_key_path is None:
-    #         ssh_key_path = Path(f"~/.ssh/{self.config.key_name}.pem").expanduser()
-    #
-    #     sh = ClusterShell(username=self.config.username,
-    #                       master_ip=ips[0],
-    #                       worker_ips=ips[1:],
-    #                       ssh_key_path=ssh_key_path,
-    #                       use_bastion=use_bastion,
-    #                       wait_for_ssh=wait_for_ssh,
-    #                       wait_for_ssh_timeout=wait_for_ssh_timeout)
-    #     return sh
-    #
+    def get_shell(self, ssh_key_path=None, use_bastion=False, use_public_ips=True,
+                  wait_for_ssh=True, wait_for_ssh_timeout=120):
+        """
+        Create a ClusterShell from a ConfigCluster.
+
+        :param ssh_key_path: The path to the SSH key required to SSH into the EC2 instances. Often ~/.ssh/something.pem.
+                             If param is None, will assume that the key is available at ~/.ssh/${KEY_PAIR_NAME}.pem
+        :param use_bastion: Whether or not to use the master node as the bastion host for SSHing to worker nodes.
+        :param use_public_ips: Whether to build the ClusterShell from the instances public IPs or private IPs.
+                               Typically this should be True when running code on a laptop/local machine and False
+                               when running on an EC2 instance
+        :param wait_for_ssh: If true, block until commands can be run on all instances. This can be useful when
+                             you are launching EC2 instances, because the instances may be in the RUNNING state
+                             but the SSH daemon may not yet be running.
+        :param wait_for_ssh_timeout: Number of seconds to spend trying to run commands on the instances before failing.
+                                     This is NOT the SSH timeout, this upper bounds the amount of time spent retrying
+                                     failed SSH connections. Only used if wait_for_ssh=True.
+        :return: ClusterShell
+        """
+
+        ips = self.public_ips if use_public_ips else self.private_ips
+
+        if ssh_key_path is None:
+            ssh_key_path = Path(f"~/.ssh/{self.cfg.keypair}").expanduser()
+
+        sh = ClusterShell(username=self.cfg.username,
+                          master_ip=ips[0],
+                          worker_ips=ips[1:],
+                          ssh_key_path=ssh_key_path,
+                          use_bastion=use_bastion,
+                          wait_for_ssh=wait_for_ssh,
+                          wait_for_ssh_timeout=wait_for_ssh_timeout)
+        return sh
+
 
     @property
     def instance_ids(self):
@@ -433,13 +379,13 @@ class EC2NodeCluster:
 
     def placement_group_exists(self):
         """Return True if cluster placement group exists"""
-        return self.cluster_placement_group_name in [pg["GroupName"] for pg in self.list_placement_groups()]
+        return self.placement_group_name in [pg["GroupName"] for pg in self.list_placement_groups()]
 
     def create_placement_group_if_doesnt_exist(self):
         """Create the cluster placement group if it doesn't exist. Do nothing if already exists"""
         if not self.placement_group_exists():
             response = self.ec2_client.create_placement_group(
-                GroupName=self.cluster_placement_group_name,
+                GroupName=self.placement_group_name,
                 Strategy='cluster'
             )
 
@@ -447,10 +393,8 @@ class EC2NodeCluster:
         """Delete the cluster placement group"""
         if self.placement_group_exists():
             response = self.ec2_client.delete_placement_group(
-                GroupName=self.cluster_placement_group_name
+                GroupName=self.placement_group_name
             )
-
-
 
     def any_node_is_running_or_pending(self):
         """Return True if any node is in RUNNING or PENDING states"""
@@ -484,8 +428,6 @@ class EC2NodeCluster:
                 pass
 
 
-
-
     def launch(self,
                dry_run=False,
                timeout_secs=None,
@@ -496,7 +438,6 @@ class EC2NodeCluster:
         Will repeatedly try to launch instances until all nodes are launched or the timeout is reached.
 
         Args:
-            az: The az to launch the cluster in, e.g. 'us-east-1f'
             vpc_id: The id of the VPC to launch the cluster in, e.g. 'vpc-123456789'
             subnet_id: The id of the subnet to launch the cluster in, e.g. 'subnet-123456789'
             ami_id: The id AMI, e.g. 'ami-123456789'
@@ -533,9 +474,9 @@ class EC2NodeCluster:
             vlog("Cluster security group already exists. No need to recreate")
         else:
             vlog("Creating cluster security group")
-            self.create_cluster_sg(self.vpc, verbose=verbose)
+            self.create_cluster_sg(self.cfg.vpc, verbose=verbose)
 
-        if self.use_placement_group:
+        if self.cfg.placement_group:
             vlog("Creating placement group")
             self.create_placement_group_if_doesnt_exist()
         else:
@@ -543,8 +484,8 @@ class EC2NodeCluster:
 
         for node in self.nodes:
             node.security_group_ids.append(self.cluster_sg_id)
-            if self.use_placement_group:
-                node.placement_group_name = self.cluster_placement_group_name
+            if self.cfg.placement_group:
+                node.placement_group_name = self.placement_group_name
 
         start = time.time()
         for launch_ind, ec2_node in enumerate(self.nodes):
@@ -553,7 +494,7 @@ class EC2NodeCluster:
 
                     ec2_node.launch(dry_run=dry_run)
 
-                    vlog(f'Node {launch_ind+1} of {self.node_count} successfully launched')
+                    vlog(f'Node {launch_ind+1} of {self.cfg.num_instances} successfully launched')
                     break
                 except Exception as e:
                     vlog(f'Error launching node: {str(e)}')
@@ -566,7 +507,7 @@ class EC2NodeCluster:
                             try:
                                 if terminate_ind >= launch_ind:
                                     break   # Don't try to shut down nodes that weren't launched.
-                                vlog(f'Terminating node #{terminate_ind+1} of {self.node_count}')
+                                vlog(f'Terminating node #{terminate_ind+1} of {self.cfg.num_instances}')
                                 ec2_node_to_delete.detach_security_group(self.cluster_sg_id)
                                 ec2_node_to_delete.terminate()
                                 vlog(f'Node #{terminate_ind+1} successfully terminated')
@@ -612,7 +553,7 @@ class EC2NodeCluster:
             for i, ec2_node in enumerate(self.nodes):
                 ec2_node.detach_security_group(self.cluster_sg_id)
                 ec2_node.terminate()
-                vlog(f'Node {i + 1} of {self.node_count} successfully triggered deletion')
+                vlog(f'Node {i + 1} of {self.cfg.num_instances} successfully triggered deletion')
 
         if self.security_group_exists(self.cluster_sg_name):
             self.delete_cluster_sg()
