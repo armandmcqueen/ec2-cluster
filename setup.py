@@ -33,5 +33,4 @@ setuptools.setup(
             'pyyaml',
             'tabulate',
         ],
-        scripts=['cli/ec3']
 )

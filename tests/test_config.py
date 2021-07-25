@@ -32,7 +32,7 @@ def test_config_missing_defaults():
     with pytest.raises(ClusterConfigValidationError):
         cfg.validate()
 
-if __name__ == '__main__':
-    test_minimal_config()
-    test_near_minimal_config()
-    test_config_missing_defaults()
+# if __name__ == '__main__':
+#     test_minimal_config()
+#     test_near_minimal_config()
+#     test_config_missing_defaults()

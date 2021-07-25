@@ -26,6 +26,7 @@ class ClusterConfig:
     subnet: Optional[str] = None
     ami: Optional[str] = None
     ebs_type: Optional[str] = None
+    ebs_device_name: Optional[str] = None
     ebs_size: Optional[int] = None
     ebs_iops: Optional[int] = None
     ebs_throughput: Optional[int] = None
@@ -65,11 +66,18 @@ class ClusterConfig:
                                                                f"is set, they both must be set. AMI: {self.ami} " \
                                                                f"Username: {self.username}"
             # TODO: Automatically handle ARM instances
-            self.ami = defaults.get_default_ami(sess).image_id
+            ami = defaults.get_default_ami(sess)
+            self.ami = ami.image_id
             print(f"Using most recent Amazon Linux 2 AMI ({self.ami}). We recommend setting this value "
                   "manually, as automatically filling in this value requires querying a very slow AWS "
                   "API. The username for this AMI is 'ec2-user'")
             self.username = "ec2-user"
+            self.ebs_device_name = ami.block_device_mappings[0].device_name
+
+        if self.ebs_device_name is None:
+            self.ebs_device_name = defaults.get_default_ebs_device_name(sess, self.ami)
+
+
 
     def validate(self):
         # Field-by-field validation

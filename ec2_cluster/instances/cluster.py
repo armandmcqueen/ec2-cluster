@@ -84,6 +84,7 @@ class Cluster:
             subnet: Optional[str] = None,
             ami: Optional[str] = None,
             ebs_type: Optional[str] = None,
+            ebs_device_name: Optional[str] = None,
             ebs_size: Optional[int] = None,
             ebs_iops: Optional[int] = None,
             ebs_throughput: Optional[int] = None,
@@ -160,10 +161,11 @@ class Cluster:
                 self.cfg.security_groups,
                 self.cfg.iam_role,
                 placement_group_name=self.placement_group_name,
-                volume_size_gb=self.cfg.ebs_size,
-                volume_type=self.cfg.ebs_type,
-                volume_iops=self.cfg.ebs_iops,
-                volume_throughput=self.cfg.ebs_throughput,
+                ebs_size=self.cfg.ebs_size,
+                ebs_device_name=self.cfg.ebs_device_name,
+                ebs_type=self.cfg.ebs_type,
+                ebs_iops=self.cfg.ebs_iops,
+                ebs_throughput=self.cfg.ebs_throughput,
                 tags=self.cfg.tags,
                 always_verbose=self._always_verbose
             )
@@ -491,7 +493,7 @@ class Cluster:
             vlog("No placement group needed")
 
         for node in self.nodes:
-            node.security_group_ids.append(self.cluster_sg_id)
+            node.security_groups.append(self.cluster_sg_id)
             if self.cfg.placement_group:
                 node.placement_group_name = self.placement_group_name
 

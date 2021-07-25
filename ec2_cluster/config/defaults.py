@@ -78,3 +78,13 @@ def get_default_ami(sess: boto3.Session, architecture: aws.ImageArchitecture=aws
     images.sort(reverse=True, key=lambda i: i.creation_date)
     most_recent_image = images[0]
     return most_recent_image
+
+def get_default_ebs_device_name(sess: boto3.Session, ami):
+    ec2_client = sess.client('ec2')
+    response = ec2_client.describe_images(ImageIds=[ami])
+
+    # This was only tested with AMIs that have a single block device mapping.
+    # Not sure if that is going to introduce a bug at some point
+    block_device_mapping = response["Images"][0]["BlockDeviceMappings"][0]
+    ebs_device_name = block_device_mapping["DeviceName"]
+    return ebs_device_name

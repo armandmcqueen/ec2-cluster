@@ -4,8 +4,6 @@ import boto3
 def get_dlamis(region, ami_type="Ubuntu"):
 
     assert ami_type in ['Ubuntu', 'Amazon Linux']
-
-
     session = boto3.session.Session(region_name=region)
     ec2_client = session.client("ec2")
 
