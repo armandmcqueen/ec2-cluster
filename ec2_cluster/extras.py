@@ -1,13 +1,9 @@
-import yaml
 import boto3
-import os
 
 
 def get_dlamis(region, ami_type="Ubuntu"):
 
     assert ami_type in ['Ubuntu', 'Amazon Linux']
-
-
     session = boto3.session.Session(region_name=region)
     ec2_client = session.client("ec2")
 
@@ -80,12 +76,4 @@ def get_my_amis(region):
         })
 
     return sorted(images, key = lambda i: i['Name'])
-
-
-def get_config_params():
-    path_to_containing_dir = os.path.dirname(os.path.realpath(__file__))
-    param_list_yaml_abspath = os.path.join(path_to_containing_dir, "clusterdef_params.yaml")
-    config_param_list = yaml.safe_load(open(param_list_yaml_abspath, 'r'))["params"]
-    return config_param_list
-
 

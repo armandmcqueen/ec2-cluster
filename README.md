@@ -1,23 +1,21 @@
 # ec2-cluster
 
-
-
-Simple CLI and Python library to spin up and run shell commands on clusters of EC2 instances using [`boto3`](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) and [`fabric`](https://github.com/fabric/fabric). Multi-purpose, but created to make deep learning distributed training infrastructure easier. Also very useful for running performance tests across multiple EC2 instance types.
-
-## Quickstart
-
-This code will launch a cluster of EC2 instances, run the command `hostname` on all of them, return the results of the command, and then tear down the cluster.
+Quickly spin up EC2 instances, run commands/scripts on them, and then (optionally) automatically shut them down. Minus all the boilerplate of `boto3` and manual SSH/`pdsh` commands.
 
 ```python
 import ec2_cluster as ec3
 
-with ec3.infra.ConfigCluster("cluster.yaml") as cluster:
+with ec3.Cluster('ec2cluster.yaml', num_instances=5) as cluster:
+    cluster.upload("perf_test.py")  # copy local file to every instance
     sh = cluster.get_shell()
-    results = sh.run_on_all("hostname")
-    hostnames = [result.stdout for result in results]
+    results = sh.run("python perf_test.py")
+    script_ouputs = [result.stdout for result in results]
 
 # Cluster is torn down when context is exited
 ```
+
+`ec3` can also be used without a context manager and then the instances won't be shut down until shutdown is manually triggered. This can be useful for long-running jobs.
+
 
 ## Long-running tasks
 
@@ -29,7 +27,7 @@ Below is one way to launch complicated, long-running jobs and download the resul
 import ec2_cluster as ec3
 
 def launch_job():
-    cluster = ec3.infra.ConfigCluster("cluster.yaml")
+    cluster = ec3.Cluster("ec2cluster.yaml")
     cluster.launch(verbose=True)
     sh = cluster.get_shell()
     sh.copy_from_local_to_all("job_script.py", "job_script.py")
@@ -37,7 +35,7 @@ def launch_job():
 
 
 def check_on_job():
-    cluster = ec3.infra.ConfigCluster("cluster.yaml")
+    cluster = ec3.Cluster("cluster.yaml")
     sh = cluster.get_shell()
     statuses = sh.run_on_all("tail -n 1 job.log", hide=True)
     for status in statuses:
